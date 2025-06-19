@@ -1,0 +1,7 @@
+transactions_2024.csv
+ValeursFoncieres-2024.txt
+*.zip
+.env
+data/processed/transactions_2024.csv
+valeursfoncieres-2024.txt.zip
+.venv/
