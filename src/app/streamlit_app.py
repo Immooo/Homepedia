@@ -243,4 +243,26 @@ elif view == "Indicateurs Socio-éco":
     st.subheader("Distribution des taux de chômage")
     st.pyplot(fig)
 
+    # Corrélation chômage / prix immobilier
+    prix_path = os.path.join("data", "homepedia.db")
+    # On va chercher les prix moyens par département dans la base (Spark table)
+    prix_dept = pd.read_sql_query(
+        "SELECT dept AS code, prix_m2_moyen FROM spark_dept_analysis", conn
+    )
+    df_corr = prix_dept.merge(df_chomage, on="code", how="inner").dropna()
+
+    st.subheader("Corrélation Taux de Chômage / Prix moyen immobilier (département)")
+    st.dataframe(df_corr[["code", "libelle", "taux_chomage", "prix_m2_moyen"]].head())
+
+    fig_corr, ax_corr = plt.subplots()
+    ax_corr.scatter(df_corr["taux_chomage"], df_corr["prix_m2_moyen"], alpha=0.7)
+    ax_corr.set_xlabel("Taux de chômage (%)")
+    ax_corr.set_ylabel("Prix moyen (€ / m²)")
+    ax_corr.set_title("Lien entre taux de chômage et prix immobilier par département")
+    st.pyplot(fig_corr)
+    st.info(
+        "Ce graphique permet de visualiser le lien entre la situation économique (taux de chômage) "
+        "et le marché immobilier (prix moyen au m²) pour chaque département."
+    )
+
 conn.close()
