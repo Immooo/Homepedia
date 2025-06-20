@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
 import sqlite3
 import math
@@ -16,20 +13,26 @@ from textblob import TextBlob
 from wordcloud import WordCloud
 from tinydb import TinyDB
 
-# 1. Configuration de la page et sélection de la vue
+# 1. Configuration de la page
 st.set_page_config(page_title="Homepedia – Analyses Immobilier France", layout="wide")
 st.title("🏠 Homepedia – Analyses Immobilier France")
 
+# 2. Choix de la vue/onglet dans la sidebar
 view = st.sidebar.radio(
     "Choix de la vue",
-    ["Standard", "Spark Analysis", "Text Analysis", "Chômage"]
+    [
+        "Standard",
+        "Spark Analysis",
+        "Text Analysis",
+        "Indicateurs Socio-éco"
+    ]
 )
 
-# 2. Connexion à la base SQLite
+# 3. Connexion à la base SQLite
 DB_PATH = os.path.join("data", "homepedia.db")
 conn = sqlite3.connect(DB_PATH)
 
-# --- Vue Standard ---
+# --- VUE STANDARD ---
 if view == "Standard":
     st.header("Vue Standard (live SQL + Pandas)")
 
@@ -43,7 +46,8 @@ if view == "Standard":
         min_value=min_date.date(),
         max_value=max_date.date()
     )
-    start_date, end_date = pd.to_datetime(raw_dates[0]), pd.to_datetime(raw_dates[1])
+    start_date = pd.to_datetime(raw_dates[0])
+    end_date = pd.to_datetime(raw_dates[1])
 
     @st.cache_data
     def load_transactions():
@@ -118,7 +122,7 @@ if view == "Standard":
     st.pyplot(fig2)
     
 
-# --- Vue Spark Analysis ---
+# --- VUE SPARK ANALYSIS ---
 elif view == "Spark Analysis":
     st.header("Vue Spark Analysis (pré-agrégation)")
 
@@ -156,7 +160,7 @@ elif view == "Spark Analysis":
     ax4.tick_params(axis='x', rotation=45)
     st.pyplot(fig4)
 
-# --- Vue Text Analysis ---
+# --- VUE TEXT ANALYSIS ---
 elif view == "Text Analysis":
     st.header("Vue Text Analysis (Sentiment & Word Cloud)")
 
@@ -197,61 +201,46 @@ elif view == "Text Analysis":
     st.subheader(f"Word Cloud (échantillon {len(sampled)})")
     st.pyplot(fig_wc)
 
-# --- Vue Chômage ---
-elif view == "Chômage":
-    st.header("Taux de chômage par département (T1 2025)")
+# --- VUE INDICATEURS SOCIO-ECO ---
+elif view == "Indicateurs Socio-éco":
+    st.header("Indicateurs Socio-économiques (INSEE)")
 
-    # Chargement des données chômage
-    chome_path = os.path.join("data", "processed", "unemployment_dept.csv")
-    geo_path = os.path.join("data", "raw", "geo", "departements_simplifie.geojson")
-    if not os.path.exists(chome_path):
-        st.error("Fichier des taux de chômage introuvable.")
+    # Chargement des données de chômage
+    unemployment_path = os.path.join("data", "processed", "unemployment_dept.csv")
+    if not os.path.exists(unemployment_path):
+        st.error("Données chômage manquantes. Exécute ingest_insee_unemployment.py.")
         st.stop()
-    chome = pd.read_csv(chome_path, dtype={"code": str})
-    geo = gpd.read_file(geo_path)[["code", "geometry"]]
-    geo = geo.merge(chome, on="code", how="left")
 
-    # Carte choroplèthe chômage
+    df_chomage = pd.read_csv(unemployment_path, dtype={'code': str})
+
+    # Affichage du tableau
+    st.subheader("Taux de chômage par département (T1 2025)")
+    st.dataframe(df_chomage)
+
+    # Carte choroplèthe
+    geo = gpd.read_file(os.path.join("data","raw","geo","departements_simplifie.geojson"))[["code","geometry"]]
+    geo = geo.merge(df_chomage, on="code", how="left")
     m = folium.Map(location=[46.6,2.4], zoom_start=5)
     folium.Choropleth(
         geo_data=geo,
         data=geo,
-        columns=["code","taux_chomage"],
+        columns=["code", "taux_chomage"],
         key_on="feature.properties.code",
         legend_name="Taux de chômage (%)",
         fill_opacity=0.7,
         line_opacity=0.2,
-        nan_fill_color="white"
+        nan_fill_color="white",
     ).add_to(m)
     folium.LayerControl().add_to(m)
-    st.subheader("Carte interactive du taux de chômage (T1 2025)")
+    st.subheader("Carte du taux de chômage (T1 2025)")
     st_folium(m, width=800, height=600)
 
-    # Tableau
-    st.subheader("Tableau des taux de chômage par département")
-    st.dataframe(
-        chome.rename(
-            columns={
-                "code": "Département",
-                "libelle": "Nom",
-                "taux_chomage": "Taux de chômage (%)"
-            }
-        ),
-        use_container_width=True
-    )
-
     # Histogramme
-    st.subheader("Distribution des taux de chômage")
     fig, ax = plt.subplots()
-    ax.hist(chome["taux_chomage"], bins=20)
+    ax.hist(df_chomage["taux_chomage"].dropna(), bins=30, color='tab:blue', edgecolor='black')
     ax.set_xlabel("Taux de chômage (%)")
     ax.set_ylabel("Nombre de départements")
+    st.subheader("Distribution des taux de chômage")
     st.pyplot(fig)
-
-    # Sidebar indicateurs chômage
-    st.sidebar.markdown("---")
-    st.sidebar.markdown(f"**Taux de chômage min :** {chome['taux_chomage'].min():.1f}%")
-    st.sidebar.markdown(f"**Taux de chômage max :** {chome['taux_chomage'].max():.1f}%")
-    st.sidebar.markdown(f"**Taux de chômage moyen :** {chome['taux_chomage'].mean():.1f}%")
 
 conn.close()
