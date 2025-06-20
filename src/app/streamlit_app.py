@@ -205,64 +205,107 @@ elif view == "Text Analysis":
 elif view == "Indicateurs Socio-éco":
     st.header("Indicateurs Socio-économiques (INSEE)")
 
-    # Chargement des données de chômage
     unemployment_path = os.path.join("data", "processed", "unemployment_dept.csv")
+    income_path = os.path.join("data", "processed", "income_dept.csv")
+
     if not os.path.exists(unemployment_path):
         st.error("Données chômage manquantes. Exécute ingest_insee_unemployment.py.")
         st.stop()
+    if not os.path.exists(income_path):
+        st.error("Données revenu médian manquantes. Exécute ingest_insee_income.py.")
+        st.stop()
 
     df_chomage = pd.read_csv(unemployment_path, dtype={'code': str})
+    df_income = pd.read_csv(income_path, dtype={'code': str})
 
-    # Affichage du tableau
-    st.subheader("Taux de chômage par département (T1 2025)")
-    st.dataframe(df_chomage)
+    tab1, tab2, tab3 = st.tabs([
+        "Chômage",
+        "Revenu médian",
+        "Corrélation chômage/revenu"
+    ])
 
-    # Carte choroplèthe
-    geo = gpd.read_file(os.path.join("data","raw","geo","departements_simplifie.geojson"))[["code","geometry"]]
-    geo = geo.merge(df_chomage, on="code", how="left")
-    m = folium.Map(location=[46.6,2.4], zoom_start=5)
-    folium.Choropleth(
-        geo_data=geo,
-        data=geo,
-        columns=["code", "taux_chomage"],
-        key_on="feature.properties.code",
-        legend_name="Taux de chômage (%)",
-        fill_opacity=0.7,
-        line_opacity=0.2,
-        nan_fill_color="white",
-    ).add_to(m)
-    folium.LayerControl().add_to(m)
-    st.subheader("Carte du taux de chômage (T1 2025)")
-    st_folium(m, width=800, height=600)
+    with tab1:
+        st.subheader("Taux de chômage par département (T1 2025)")
+        st.dataframe(df_chomage)
+        # Carte choroplèthe chômage
+        geo = gpd.read_file(os.path.join("data","raw","geo","departements_simplifie.geojson"))[["code","geometry"]]
+        geo = geo.merge(df_chomage, on="code", how="left")
+        m1 = folium.Map(location=[46.6,2.4], zoom_start=5)
+        folium.Choropleth(
+            geo_data=geo,
+            data=geo,
+            columns=["code", "taux_chomage"],
+            key_on="feature.properties.code",
+            legend_name="Taux de chômage (%)",
+            fill_opacity=0.7,
+            line_opacity=0.2,
+            nan_fill_color="white",
+        ).add_to(m1)
+        folium.LayerControl().add_to(m1)
+        st.subheader("Carte du taux de chômage (T1 2025)")
+        st_folium(m1, width=800, height=600)
 
-    # Histogramme
-    fig, ax = plt.subplots()
-    ax.hist(df_chomage["taux_chomage"].dropna(), bins=30, color='tab:blue', edgecolor='black')
-    ax.set_xlabel("Taux de chômage (%)")
-    ax.set_ylabel("Nombre de départements")
-    st.subheader("Distribution des taux de chômage")
-    st.pyplot(fig)
+        # Histogramme
+        fig, ax = plt.subplots()
+        ax.hist(df_chomage["taux_chomage"].dropna(), bins=30, color='tab:blue', edgecolor='black')
+        ax.set_xlabel("Taux de chômage (%)")
+        ax.set_ylabel("Nombre de départements")
+        st.subheader("Distribution des taux de chômage")
+        st.pyplot(fig)
 
-    # Corrélation chômage / prix immobilier
-    prix_path = os.path.join("data", "homepedia.db")
-    # On va chercher les prix moyens par département dans la base (Spark table)
-    prix_dept = pd.read_sql_query(
-        "SELECT dept AS code, prix_m2_moyen FROM spark_dept_analysis", conn
-    )
-    df_corr = prix_dept.merge(df_chomage, on="code", how="inner").dropna()
+    with tab2:
+        st.subheader("Revenu médian par département (2021, INSEE)")
+        st.dataframe(df_income)
 
-    st.subheader("Corrélation Taux de Chômage / Prix moyen immobilier (département)")
-    st.dataframe(df_corr[["code", "libelle", "taux_chomage", "prix_m2_moyen"]])
+        # Carte choroplèthe revenu médian
+        geo2 = gpd.read_file(os.path.join("data","raw","geo","departements_simplifie.geojson"))[["code","geometry"]]
+        geo2 = geo2.merge(df_income, on="code", how="left")
+        m2 = folium.Map(location=[46.6,2.4], zoom_start=5)
+        folium.Choropleth(
+            geo_data=geo2,
+            data=geo2,
+            columns=["code", "income_median"],
+            key_on="feature.properties.code",
+            legend_name="Revenu médian (€ / an)",
+            fill_opacity=0.7,
+            line_opacity=0.2,
+            nan_fill_color="white",
+        ).add_to(m2)
+        folium.LayerControl().add_to(m2)
+        st.subheader("Carte du revenu médian (2021)")
+        st_folium(m2, width=800, height=600)
 
-    fig_corr, ax_corr = plt.subplots()
-    ax_corr.scatter(df_corr["taux_chomage"], df_corr["prix_m2_moyen"], alpha=0.7)
-    ax_corr.set_xlabel("Taux de chômage (%)")
-    ax_corr.set_ylabel("Prix moyen (€ / m²)")
-    ax_corr.set_title("Lien entre taux de chômage et prix immobilier par département")
-    st.pyplot(fig_corr)
-    st.info(
-        "Ce graphique permet de visualiser le lien entre la situation économique (taux de chômage) "
-        "et le marché immobilier (prix moyen au m²) pour chaque département."
-    )
+        # Histogramme
+        fig2, ax2 = plt.subplots()
+        ax2.hist(df_income["income_median"].dropna(), bins=30, color='tab:green', edgecolor='black')
+        ax2.set_xlabel("Revenu médian (€ / an)")
+        ax2.set_ylabel("Nombre de départements")
+        st.subheader("Distribution du revenu médian")
+        st.pyplot(fig2)
+
+    with tab3:
+        st.subheader("Corrélation taux de chômage / revenu médian (départemental)")
+
+        # Jointure
+        df_corr = df_chomage.merge(df_income, on="code", how="inner")
+
+        fig3, ax3 = plt.subplots()
+        ax3.scatter(df_corr["income_median"], df_corr["taux_chomage"], alpha=0.7)
+        ax3.set_xlabel("Revenu médian (€ / an)")
+        ax3.set_ylabel("Taux de chômage (%)")
+        ax3.set_title("Corrélation taux de chômage vs revenu médian")
+        st.pyplot(fig3)
+
+        # Calcul corrélation Pearson
+        pearson = df_corr["income_median"].corr(df_corr["taux_chomage"])
+        st.info(f"**Corrélation linéaire (Pearson) : {pearson:.3f}**")
+
+        st.markdown(
+            """
+            - **Valeur proche de -1** : relation inverse (plus le revenu est haut, plus le chômage est bas)
+            - **Valeur proche de +1** : relation directe (plus le revenu est haut, plus le chômage est élevé)
+            - **Valeur proche de 0** : pas de corrélation linéaire
+            """
+        )
 
 conn.close()
