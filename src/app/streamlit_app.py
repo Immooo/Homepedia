@@ -252,7 +252,7 @@ elif view == "Indicateurs Socio-éco":
     df_corr = prix_dept.merge(df_chomage, on="code", how="inner").dropna()
 
     st.subheader("Corrélation Taux de Chômage / Prix moyen immobilier (département)")
-    st.dataframe(df_corr[["code", "libelle", "taux_chomage", "prix_m2_moyen"]].head())
+    st.dataframe(df_corr[["code", "libelle", "taux_chomage", "prix_m2_moyen"]])
 
     fig_corr, ax_corr = plt.subplots()
     ax_corr.scatter(df_corr["taux_chomage"], df_corr["prix_m2_moyen"], alpha=0.7)
