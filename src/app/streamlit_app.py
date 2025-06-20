@@ -146,32 +146,30 @@ elif view == "Spark Analysis":
     ax4.tick_params(axis='x', rotation=45)
     st.pyplot(fig4)
 
-# 5. Vue Text Analysis
+# --- Vue Text Analysis ---
 else:
-    st.header("Vue Text Analysis (Sentiment & Word Cloud)")
+    st.header("Vue Text Analysis (NLP via TinyDB)")
 
-    comments_path = os.path.join("data", "processed", "comments.csv")
-    if not os.path.exists(comments_path):
-        st.error(f"Fichier de commentaires manquant : {comments_path}")
-        st.stop()
+    from tinydb import TinyDB
 
-    df_comments = pd.read_csv(comments_path)
+    comments_db = TinyDB(os.path.join("data","processed","comments.json"))
+    docs = comments_db.all()
+    df_comments = pd.DataFrame(docs)
+
     st.subheader("Aperçu des commentaires")
     st.dataframe(df_comments.head(10))
 
-    # Sentiment analysis
-    def sentiment_score(text):
-        return TextBlob(text).sentiment.polarity
-    df_comments['sentiment'] = df_comments['commentaire'].apply(sentiment_score)
+    # Sentiment
+    df_comments["sentiment"] = df_comments["commentaire"].apply(lambda t: TextBlob(t).sentiment.polarity)
     st.subheader("Sentiment des commentaires")
-    st.dataframe(df_comments[['commentaire','sentiment']].head(10))
+    st.dataframe(df_comments[["commentaire","sentiment"]].head(10))
 
     # Word Cloud
-    text = " ".join(df_comments['commentaire'].dropna().tolist())
-    wc = WordCloud(width=800, height=400, background_color='white').generate(text)
+    text = " ".join(df_comments["commentaire"].tolist())
+    wc = WordCloud(width=800, height=400, background_color="white").generate(text)
     fig_wc, ax_wc = plt.subplots(figsize=(10,5))
-    ax_wc.imshow(wc, interpolation='bilinear')
-    ax_wc.axis('off')
+    ax_wc.imshow(wc, interpolation="bilinear")
+    ax_wc.axis("off")
     st.subheader("Word Cloud des commentaires")
     st.pyplot(fig_wc)
 
