@@ -20,7 +20,10 @@ from tinydb import TinyDB
 st.set_page_config(page_title="Homepedia – Analyses Immobilier France", layout="wide")
 st.title("🏠 Homepedia – Analyses Immobilier France")
 
-view = st.sidebar.radio("Choix de la vue", ["Standard", "Spark Analysis", "Text Analysis"])
+view = st.sidebar.radio(
+    "Choix de la vue",
+    ["Standard", "Spark Analysis", "Text Analysis", "Chômage"]
+)
 
 # 2. Connexion à la base SQLite
 DB_PATH = os.path.join("data", "homepedia.db")
@@ -154,7 +157,7 @@ elif view == "Spark Analysis":
     st.pyplot(fig4)
 
 # --- Vue Text Analysis ---
-else:
+elif view == "Text Analysis":
     st.header("Vue Text Analysis (Sentiment & Word Cloud)")
 
     tdb_path = os.path.join("data", "processed", "comments.json")
@@ -193,5 +196,62 @@ else:
     ax_wc.axis('off')
     st.subheader(f"Word Cloud (échantillon {len(sampled)})")
     st.pyplot(fig_wc)
+
+# --- Vue Chômage ---
+elif view == "Chômage":
+    st.header("Taux de chômage par département (T1 2025)")
+
+    # Chargement des données chômage
+    chome_path = os.path.join("data", "processed", "unemployment_dept.csv")
+    geo_path = os.path.join("data", "raw", "geo", "departements_simplifie.geojson")
+    if not os.path.exists(chome_path):
+        st.error("Fichier des taux de chômage introuvable.")
+        st.stop()
+    chome = pd.read_csv(chome_path, dtype={"code": str})
+    geo = gpd.read_file(geo_path)[["code", "geometry"]]
+    geo = geo.merge(chome, on="code", how="left")
+
+    # Carte choroplèthe chômage
+    m = folium.Map(location=[46.6,2.4], zoom_start=5)
+    folium.Choropleth(
+        geo_data=geo,
+        data=geo,
+        columns=["code","taux_chomage"],
+        key_on="feature.properties.code",
+        legend_name="Taux de chômage (%)",
+        fill_opacity=0.7,
+        line_opacity=0.2,
+        nan_fill_color="white"
+    ).add_to(m)
+    folium.LayerControl().add_to(m)
+    st.subheader("Carte interactive du taux de chômage (T1 2025)")
+    st_folium(m, width=800, height=600)
+
+    # Tableau
+    st.subheader("Tableau des taux de chômage par département")
+    st.dataframe(
+        chome.rename(
+            columns={
+                "code": "Département",
+                "libelle": "Nom",
+                "taux_chomage": "Taux de chômage (%)"
+            }
+        ),
+        use_container_width=True
+    )
+
+    # Histogramme
+    st.subheader("Distribution des taux de chômage")
+    fig, ax = plt.subplots()
+    ax.hist(chome["taux_chomage"], bins=20)
+    ax.set_xlabel("Taux de chômage (%)")
+    ax.set_ylabel("Nombre de départements")
+    st.pyplot(fig)
+
+    # Sidebar indicateurs chômage
+    st.sidebar.markdown("---")
+    st.sidebar.markdown(f"**Taux de chômage min :** {chome['taux_chomage'].min():.1f}%")
+    st.sidebar.markdown(f"**Taux de chômage max :** {chome['taux_chomage'].max():.1f}%")
+    st.sidebar.markdown(f"**Taux de chômage moyen :** {chome['taux_chomage'].mean():.1f}%")
 
 conn.close()
