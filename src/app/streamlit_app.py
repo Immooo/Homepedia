@@ -1,6 +1,10 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import os
 import sqlite3
 import math
+import random
 
 import streamlit as st
 import pandas as pd
@@ -10,6 +14,7 @@ import matplotlib.pyplot as plt
 from streamlit_folium import st_folium
 from textblob import TextBlob
 from wordcloud import WordCloud
+from tinydb import TinyDB
 
 # 1. Configuration de la page et sélection de la vue
 st.set_page_config(page_title="Homepedia – Analyses Immobilier France", layout="wide")
@@ -21,9 +26,10 @@ view = st.sidebar.radio("Choix de la vue", ["Standard", "Spark Analysis", "Text 
 DB_PATH = os.path.join("data", "homepedia.db")
 conn = sqlite3.connect(DB_PATH)
 
-# 3. Vue Standard
+# --- Vue Standard ---
 if view == "Standard":
     st.header("Vue Standard (live SQL + Pandas)")
+
     # Filtres
     st.sidebar.subheader("Filtres Standard")
     min_date = pd.to_datetime("2024-01-01")
@@ -57,7 +63,7 @@ if view == "Standard":
     pmin, pmax = tx["prix_m2"].quantile([0.01, 0.99])
     price_range = st.sidebar.slider("Prix au m²", int(pmin), int(pmax), (int(pmin), int(pmax)))
 
-    # Appliquer filtres
+    # Application des filtres
     mask = (tx["date_mutation"] >= start_date) & (tx["date_mutation"] <= end_date)
     if choix_type != "Tous":
         mask &= tx["type_local"] == choix_type
@@ -107,8 +113,9 @@ if view == "Standard":
     ax2.set_xlabel("Population départementale")
     ax2.set_ylabel("Prix moyen (€ / m²)")
     st.pyplot(fig2)
+    
 
-# 4. Vue Spark Analysis
+# --- Vue Spark Analysis ---
 elif view == "Spark Analysis":
     st.header("Vue Spark Analysis (pré-agrégation)")
 
@@ -119,7 +126,7 @@ elif view == "Spark Analysis":
     st.subheader("Résultats Spark par département")
     st.dataframe(df_spark)
 
-    # Paramètres pagination
+    # Pagination Spark
     per_page = st.sidebar.slider("Dépts par page", min_value=5, max_value=50, value=10, step=5)
     total = len(df_spark)
     n_pages = math.ceil(total / per_page)
@@ -148,29 +155,43 @@ elif view == "Spark Analysis":
 
 # --- Vue Text Analysis ---
 else:
-    st.header("Vue Text Analysis (NLP via TinyDB)")
+    st.header("Vue Text Analysis (Sentiment & Word Cloud)")
 
-    from tinydb import TinyDB
+    tdb_path = os.path.join("data", "processed", "comments.json")
+    if not os.path.exists(tdb_path):
+        st.error(f"Base NoSQL manque : {tdb_path}")
+        st.stop()
+    db = TinyDB(tdb_path)
+    all_docs = db.all()
+    total = len(all_docs)
+    st.sidebar.markdown(f"**Total commentaires :** {total:,}")
 
-    comments_db = TinyDB(os.path.join("data","processed","comments.json"))
-    docs = comments_db.all()
-    df_comments = pd.DataFrame(docs)
+    # Pagination des commentaires
+    per_page = st.sidebar.slider("Avis par page", min_value=10, max_value=200, value=50, step=10)
+    n_pages = math.ceil(total / per_page)
+    page = st.sidebar.number_input("Page", min_value=1, max_value=n_pages, value=1)
+    start = (page - 1) * per_page
+    end = start + per_page
+    page_docs = all_docs[start:end]
+    df_page = pd.DataFrame(page_docs)
 
-    st.subheader("Aperçu des commentaires")
-    st.dataframe(df_comments.head(10))
+    st.subheader(f"Commentaires (page {page}/{n_pages})")
+    st.dataframe(df_page)
 
-    # Sentiment
-    df_comments["sentiment"] = df_comments["commentaire"].apply(lambda t: TextBlob(t).sentiment.polarity)
-    st.subheader("Sentiment des commentaires")
-    st.dataframe(df_comments[["commentaire","sentiment"]].head(10))
+    # Sentiment analysis sur page
+    df_page['sentiment'] = df_page['commentaire'].apply(lambda t: TextBlob(t).sentiment.polarity)
+    st.subheader("Sentiment des avis (page)")
+    st.bar_chart(df_page['sentiment'])
 
-    # Word Cloud
-    text = " ".join(df_comments["commentaire"].tolist())
-    wc = WordCloud(width=800, height=400, background_color="white").generate(text)
+    # Word Cloud sur échantillon
+    sample_size = st.sidebar.slider("Commentaires pour word cloud", min_value=100, max_value=5000, value=1000, step=100)
+    sampled = random.sample(all_docs, min(sample_size, total))
+    text = " ".join([doc['commentaire'] for doc in sampled])
+    wc = WordCloud(width=800, height=400, background_color='white').generate(text)
     fig_wc, ax_wc = plt.subplots(figsize=(10,5))
-    ax_wc.imshow(wc, interpolation="bilinear")
-    ax_wc.axis("off")
-    st.subheader("Word Cloud des commentaires")
+    ax_wc.imshow(wc, interpolation='bilinear')
+    ax_wc.axis('off')
+    st.subheader(f"Word Cloud (échantillon {len(sampled)})")
     st.pyplot(fig_wc)
 
 conn.close()
