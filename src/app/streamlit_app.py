@@ -238,10 +238,11 @@ elif view == "Indicateurs Socio-éco":
     # Chemins
     unemployment_path = os.path.join("data", "processed", "unemployment_dept.csv")
     income_path       = os.path.join("data", "processed", "income_dept.csv")
+    population_path   = os.path.join("data", "processed", "population_dept.csv")
     geojson_path      = os.path.join("data", "raw", "geo", "departements_simplifie.geojson")
 
     # Vérifications
-    for path, name in [(unemployment_path, "chômage"), (income_path, "revenu médian")]:
+    for path, name in [(unemployment_path, "chômage"), (income_path, "revenu médian"), (population_path,   "population")]:
         if not os.path.exists(path):
             st.error(f"Données {name} manquantes. Exécutez ingest_insee_{name.replace(' ', '_')}.py.")
             st.stop()
@@ -262,16 +263,18 @@ elif view == "Indicateurs Socio-éco":
     df_chom = load_df(unemployment_path)
     df_inc  = load_df(income_path)
     geo     = load_geo(geojson_path)
+    df_pop  = load_df(population_path)
 
     # Conversion numérique
     df_chom["taux_chomage"] = pd.to_numeric(df_chom["taux_chomage"].str.replace(",", "."), errors="coerce")
     df_inc["income_median"] = pd.to_numeric(df_inc["income_median"].str.replace(",", "."), errors="coerce")
+    df_pop["population"] = pd.to_numeric(df_pop["population"].str.replace(" ", ""), errors="coerce")
 
     # Application du filtre taux de chômage
     df_chom = df_chom.query("@min_c <= taux_chomage <= @max_c")
 
     # Onglets
-    tab1, tab2, tab3 = st.tabs(["Chômage", "Revenu médian", "Corrélation chômage/revenu"])
+    tab1, tab2, tab3, tab4 = st.tabs([ "Chômage", "Revenu médian", "Population", "Corrélation"])
 
     # --- Onglet 1 : Chômage ---
     with tab1:
@@ -333,8 +336,35 @@ elif view == "Indicateurs Socio-éco":
         st.subheader("Distribution du revenu médian")
         st.pyplot(fig2)
 
+    with tab3:  # était tab3 avant, devient tab3 pour Population
+        st.subheader("Population par département (INSEE)")
+        st.dataframe(df_pop)
+
+        geo3 = geo.merge(df_pop, on="code", how="left")
+        m3 = folium.Map(location=[46.6,2.4], zoom_start=5)
+        folium.Choropleth(
+            geo_data=geo3,
+            data=geo3,
+            columns=["code", "population"],
+            key_on="feature.properties.code",
+            legend_name="Population",
+            fill_opacity=0.7,
+            line_opacity=0.2,
+            nan_fill_color="white"
+        ).add_to(m3)
+        folium.LayerControl().add_to(m3)
+        st.subheader("Carte de la population")
+        st_folium(m3, width=800, height=600)
+
+        fig3, ax3 = plt.subplots()
+        ax3.hist(df_pop["population"].dropna(), bins=30, edgecolor='black')
+        ax3.set_xlabel("Population")
+        ax3.set_ylabel("Nombre de départements")
+        st.subheader("Distribution de la population")
+        st.pyplot(fig3)
+        
     # --- Onglet 3 : Corrélation taux de chômage / revenu médian ---
-    with tab3:
+    with tab4:
         st.subheader("Corrélation taux de chômage ↔ revenu médian")
         df_corr = df_chom.merge(df_inc, on="code", how="inner")
 
