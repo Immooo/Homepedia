@@ -234,7 +234,6 @@ elif view == "Text Mining":
 
 # --- VUE INDICATEURS SOCIO-ÉCO ---
 elif view == "Indicateurs Socio-éco":
-    poverty_path = os.path.join("data", "processed", "poverty_dept.csv")
     st.header("📊 Indicateurs Socio-économiques (INSEE)")
 
     # Chemins
@@ -242,6 +241,7 @@ elif view == "Indicateurs Socio-éco":
     income_path       = os.path.join("data", "processed", "income_dept.csv")
     population_path   = os.path.join("data", "processed", "population_dept.csv")
     geojson_path      = os.path.join("data", "raw", "geo", "departements_simplifie.geojson")
+    poverty_path   = os.path.join("data", "processed", "poverty_dept.csv")
 
     # Vérifications
     for path, name in [(unemployment_path, "chômage"), (income_path, "revenu médian"), (population_path, "population"), (poverty_path, "pauvreté")]:
@@ -278,7 +278,7 @@ elif view == "Indicateurs Socio-éco":
     df_chom = df_chom.query("@min_c <= taux_chomage <= @max_c")
 
     # Onglets
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([ "Chômage", "Revenu médian", "Population", "Pauvreté", "Corrélation"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Chômage", "Revenu médian", "Population", "Pauvreté", "Corrélation", "Matrice corrélations"])
 
     # --- Onglet 1 : Chômage ---
     with tab1:
@@ -420,4 +420,45 @@ elif view == "Indicateurs Socio-éco":
         st.pyplot(fig3)
 
         st.info(f"Coefficient de corrélation (Pearson) : {r_value:.3f}")
+
+    with tab6:
+        st.subheader("Matrice de corrélations multiples")
+
+        # On fusionne tous les indicateurs sur 'code'
+        df_all = (
+            df_chom
+            .merge(df_inc, on="code")
+            .merge(df_pop, on="code")
+            .merge(df_pov, on="code")
+        )
+
+        # On sélectionne les colonnes numériques
+        corr = df_all[[
+            "taux_chomage",
+            "income_median",
+            "population",
+            "poverty_rate"
+        ]].corr()
+
+        # Affichage heatmap avec annotations
+        fig, ax = plt.subplots()
+        cax = ax.imshow(corr, vmin=-1, vmax=1)
+
+        # Ticks et labels
+        ax.set_xticks(range(len(corr)))
+        ax.set_xticklabels(corr.columns, rotation=45, ha="right")
+        ax.set_yticks(range(len(corr)))
+        ax.set_yticklabels(corr.index)
+
+        # Valeurs au centre des cases
+        for i in range(len(corr)):
+            for j in range(len(corr)):
+                val = corr.iat[i, j]
+                color = "white" if abs(val) > 0.5 else "black"
+                ax.text(j, i, f"{val:.2f}", ha="center", va="center", color=color)
+
+        # Barre de couleur
+        fig.colorbar(cax, ax=ax, fraction=0.046, pad=0.04)
+        st.pyplot(fig)
+
 conn.close()
