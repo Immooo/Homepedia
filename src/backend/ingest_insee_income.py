@@ -2,38 +2,54 @@ import os
 import pandas as pd
 import sqlite3
 
-def main():
-    RAW = os.path.join("data", "raw", "insee", "DS_FILOSOFI_CC_2021_data.csv")
+def extract_dept(code_insee: str) -> str:
+    """
+    Extrait le code départemental (2, 3 ou 4 caractères) à partir
+    du code INSEE de la commune.
+    """
+    code5 = str(code_insee).zfill(5)
+    if code5.startswith(("97", "98")):
+        return code5[:3]
+    elif code5[:2] == "20":
+        return "2A" if int(code5[2]) < 2 else "2B"
+    return code5[:2]
+
+def main() -> None:
+    RAW     = os.path.join("data", "raw", "insee", "DS_FILOSOFI_CC_2021_data.csv")
     OUT_CSV = os.path.join("data", "processed", "income_dept.csv")
     DB_PATH = os.path.join("data", "homepedia.db")
     os.makedirs(os.path.dirname(OUT_CSV), exist_ok=True)
 
-    # Lecture
-    df = pd.read_csv(RAW, dtype=str, sep=";")  # change sep=";" si nécessaire, sinon "," par défaut
+    df = pd.read_csv(RAW, dtype=str, sep=";")
 
-    # Filtrage des départements (codes à 2 ou 3 chiffres), mesure D1_SL (revenu médian), unité euro/an
-    df = df[
-        (df["FILOSOFI_MEASURE"] == "D1_SL") &
-        (df["UNIT_MEASURE"] == "EUR_YR") &
-        (df["CONF_STATUS"] == "C") &
-        (df["TIME_PERIOD"] == "2021")
+    df_filt = df[
+        (df["FILOSOFI_MEASURE"] == "MED_SL") &
+        (df["UNIT_MEASURE"]    == "EUR_YR") &
+        (df["CONF_STATUS"]     == "F") &
+        (df["TIME_PERIOD"]     == "2021") &
+        df["OBS_VALUE"].notna() &
+        (df["OBS_VALUE"] != "")
     ].copy()
 
-    # Correction types et renommage
-    df["code"] = df["GEO"].str.zfill(2)   # les codes INSEE département sont sur 2 ou 3 caractères, ici on complète avec des zéros
-    df["income_median"] = df["OBS_VALUE"].str.replace(",", ".").astype(float)
-    df = df[["code", "income_median"]]
+    df_filt["dept"] = df_filt["GEO"].apply(extract_dept)
+    df_filt["income_median"] = (
+        df_filt["OBS_VALUE"]
+        .str.replace(",", ".")
+        .astype(float)
+    )
 
-    # Regrouper si jamais il y a plusieurs lignes par département (moyenne, mais normalement il n'y en a qu'une)
-    df = df.groupby("code", as_index=False)["income_median"].mean()
+    df_dept = (
+        df_filt
+        .groupby("dept", as_index=False)["income_median"]
+        .median()
+        .rename({"dept": "code"}, axis=1)
+    )
 
-    # Écriture CSV
-    df.to_csv(OUT_CSV, index=False, encoding="utf-8")
-    print(f"CSV revenu médian écrit → {OUT_CSV}")
+    df_dept.to_csv(OUT_CSV, index=False, encoding="utf-8")
+    print(f"CSV revenu médian départemental écrit → {OUT_CSV}")
 
-    # Insertion SQLite
     conn = sqlite3.connect(DB_PATH)
-    df.to_sql("income", conn, if_exists="replace", index=False)
+    df_dept.to_sql("income", conn, if_exists="replace", index=False)
     conn.close()
     print("✅ Table 'income' créée dans SQLite")
 

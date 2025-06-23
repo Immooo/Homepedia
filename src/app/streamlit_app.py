@@ -15,6 +15,7 @@ from tinydb import TinyDB
 import numpy as np
 from typing import Any, List
 import matplotlib.ticker as mticker
+import seaborn as sns
 
 # 1. Configuration de la page
 st.set_page_config(page_title="Homepedia – Analyses Immobilier France", layout="wide")
@@ -444,57 +445,53 @@ elif view == "Région":
     st.pyplot(fig_r)
 
     # 6) Scatter Population vs Prix (avec zoom slider)
-fig_sp, ax_sp = plt.subplots()
-ax_sp.scatter(df_region["population"], df_region["prix_m2_moyen"], alpha=0.7)
-ax_sp.set_xlim(x_range)
-ax_sp.set_xlabel("Population")
-ax_sp.set_ylabel("Prix moyen (€ / m²)")
+    fig_sp, ax_sp = plt.subplots()
+    ax_sp.scatter(df_region["population"], df_region["prix_m2_moyen"], alpha=0.7)
+    ax_sp.set_xlim(x_range)
+    ax_sp.set_xlabel("Population")
+    ax_sp.set_ylabel("Prix moyen (€ / m²)")
 
-# Formateur de ticks en M
-fmt = mticker.FuncFormatter(lambda x, _: f"{x/1_000_000:.1f} M")
-ax_sp.xaxis.set_major_formatter(fmt)
-plt.xticks(rotation=45)
+    # Formateur de ticks en M
+    fmt = mticker.FuncFormatter(lambda x, _: f"{x/1_000_000:.1f} M")
+    ax_sp.xaxis.set_major_formatter(fmt)
+    plt.xticks(rotation=45)
 
-st.subheader(
-    f"Population vs Prix moyen par région (zoom : {x_range[0]:,} → {x_range[1]:,})"
-)
-st.pyplot(fig_sp)
+    st.subheader(
+        f"Population vs Prix moyen par région (zoom : {x_range[0]:,} → {x_range[1]:,})"
+    )
+    st.pyplot(fig_sp)
 
-# 7) Matrice de corrélations régionales (placée à la fin)
-st.subheader("Matrice de corrélations régionales")
+    st.subheader("Matrice de corrélations régionales")
 
-@st.cache_data
-def compute_region_corr(df: pd.DataFrame) -> pd.DataFrame:
-    possibles = ["prix_m2_moyen", "population", "income_median", "taux_chomage", "poverty_rate"]
-    cols = [col for col in possibles if col in df.columns]
-    
-    if len(cols) < 2:
-        st.warning("Pas assez de colonnes numériques disponibles pour calculer la corrélation.")
-        return pd.DataFrame()
-    
-    return df[cols].corr()
+    @st.cache_data
+    def compute_region_corr(df: pd.DataFrame) -> pd.DataFrame:
+        features = ["prix_m2_moyen", "population", "income_median", "taux_chomage", "poverty_rate"]
+        cols = [c for c in features if c in df.columns]
+        return df[cols].corr() if len(cols) > 1 else pd.DataFrame()
 
-corr_reg = compute_region_corr(df_region)
+    corr_reg = compute_region_corr(df_region)
 
-if not corr_reg.empty:
-    fig_corr, ax_corr = plt.subplots()
-    cax = ax_corr.imshow(corr_reg, vmin=-1, vmax=1, cmap='coolwarm')
-    ax_corr.set_xticks(range(len(corr_reg)))
-    ax_corr.set_xticklabels(corr_reg.columns, rotation=45, ha="right")
-    ax_corr.set_yticks(range(len(corr_reg)))
-    ax_corr.set_yticklabels(corr_reg.index)
-    
-    # annotations
-    for i in range(len(corr_reg)):
-        for j in range(len(corr_reg)):
-            val = corr_reg.iat[i, j]
-            color = "white" if abs(val) > 0.5 else "black"
-            ax_corr.text(j, i, f"{val:.2f}", ha="center", va="center", color=color)
-    
-    fig_corr.colorbar(cax, ax=ax_corr, fraction=0.046, pad=0.04)
-    st.pyplot(fig_corr)
-else:
-    st.info("Corrélation impossible : données socio-économiques manquantes.")
+    if corr_reg.empty:
+        st.info("Corrélation impossible : données socio-économiques manquantes.")
+    else:
+        fig, ax = plt.subplots()
+        sns.heatmap(
+            corr_reg,
+            annot=True,
+            fmt=".2f",
+            cmap="coolwarm",
+            vmin=-1, vmax=1,
+            square=True,
+            cbar_kws={"shrink": 0.75},
+            ax=ax
+        )
+        # Ajustement dynamique de la couleur des annotations
+        for text in ax.texts:
+            val = float(text.get_text())
+            text.set_color("white" if abs(val) > 0.5 else "black")
+        ax.set_xticklabels(corr_reg.columns, rotation=45, ha="right")
+        ax.set_yticklabels(corr_reg.index, rotation=0)
+        st.pyplot(fig)
 
 # Clôture
 conn.close()
