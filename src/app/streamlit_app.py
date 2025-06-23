@@ -234,6 +234,7 @@ elif view == "Text Mining":
 
 # --- VUE INDICATEURS SOCIO-ÉCO ---
 elif view == "Indicateurs Socio-éco":
+    poverty_path = os.path.join("data", "processed", "poverty_dept.csv")
     st.header("📊 Indicateurs Socio-économiques (INSEE)")
 
     # Chemins
@@ -243,7 +244,7 @@ elif view == "Indicateurs Socio-éco":
     geojson_path      = os.path.join("data", "raw", "geo", "departements_simplifie.geojson")
 
     # Vérifications
-    for path, name in [(unemployment_path, "chômage"), (income_path, "revenu médian"), (population_path,   "population")]:
+    for path, name in [(unemployment_path, "chômage"), (income_path, "revenu médian"), (population_path, "population"), (poverty_path, "pauvreté")]:
         if not os.path.exists(path):
             st.error(f"Données {name} manquantes. Exécutez ingest_insee_{name.replace(' ', '_')}.py.")
             st.stop()
@@ -265,17 +266,19 @@ elif view == "Indicateurs Socio-éco":
     df_inc  = load_df(income_path)
     geo     = load_geo(geojson_path)
     df_pop  = load_df(population_path)
+    df_pov = load_df(poverty_path)
 
     # Conversion numérique
     df_chom["taux_chomage"] = pd.to_numeric(df_chom["taux_chomage"].str.replace(",", "."), errors="coerce")
     df_inc["income_median"] = pd.to_numeric(df_inc["income_median"].str.replace(",", "."), errors="coerce")
     df_pop["population"] = pd.to_numeric(df_pop["population"].str.replace(" ", ""), errors="coerce")
+    df_pov["poverty_rate"] = pd.to_numeric(df_pov["poverty_rate"].str.replace(",", "."), errors="coerce")
 
     # Application du filtre taux de chômage
     df_chom = df_chom.query("@min_c <= taux_chomage <= @max_c")
 
     # Onglets
-    tab1, tab2, tab3, tab4 = st.tabs([ "Chômage", "Revenu médian", "Population", "Corrélation"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([ "Chômage", "Revenu médian", "Population", "Pauvreté", "Corrélation"])
 
     # --- Onglet 1 : Chômage ---
     with tab1:
@@ -370,9 +373,36 @@ elif view == "Indicateurs Socio-éco":
         plt.xticks(rotation=45)
 
         st.pyplot(fig3)
+        
+        with tab4:
+            st.subheader("Taux de pauvreté par département (INSEE)")
+            st.dataframe(df_pov)
 
-    # --- Onglet 3 : Corrélation taux de chômage / revenu médian ---
-    with tab4:
+            geo4 = geo.merge(df_pov, on="code", how="left")
+            m4 = folium.Map(location=[46.6,2.4], zoom_start=5)
+            folium.Choropleth(
+                geo_data=geo4,
+                data=geo4,
+                columns=["code", "poverty_rate"],
+                key_on="feature.properties.code",
+                legend_name="Taux de pauvreté (%)",
+                fill_opacity=0.7,
+                line_opacity=0.2,
+                nan_fill_color="white"
+            ).add_to(m4)
+            folium.LayerControl().add_to(m4)
+            st.subheader("Carte du taux de pauvreté")
+            st_folium(m4, width=800, height=600)
+
+            fig4, ax4 = plt.subplots()
+            ax4.hist(df_pov["poverty_rate"].dropna(), bins=30, edgecolor='black')
+            ax4.set_xlabel("Taux de pauvreté (%)")
+            ax4.set_ylabel("Nombre de départements")
+            st.subheader("Distribution du taux de pauvreté")
+            st.pyplot(fig4)
+
+    # --- Onglet 4 : Corrélation taux de chômage / revenu médian ---
+    with tab5:
         st.subheader("Corrélation taux de chômage ↔ revenu médian")
         df_corr = df_chom.merge(df_inc, on="code", how="inner")
 
