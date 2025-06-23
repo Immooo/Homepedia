@@ -7,12 +7,14 @@ import streamlit as st
 import pandas as pd
 import geopandas as gpd
 import folium
-import matplotlib.pyplot as plt
 from streamlit_folium import st_folium
+import matplotlib.pyplot as plt
 from textblob import TextBlob
 from wordcloud import WordCloud
 from tinydb import TinyDB
 import numpy as np
+from typing import Any, List, cast
+import plotly.express as px
 
 # 1. Configuration de la page
 st.set_page_config(page_title="Homepedia – Analyses Immobilier France", layout="wide")
@@ -202,147 +204,152 @@ elif view == "Text Analysis":
     st.subheader(f"Word Cloud (échantillon {len(sampled)})")
     st.pyplot(fig_wc)
 
+# Filtre uniquement taux de chômage
+if view == "Indicateurs Socio-éco":
+    # On charge d’abord les données brutes pour en déterminer la plage
+    df_chom_tmp = pd.read_csv("data/processed/unemployment_dept.csv", dtype=str, encoding="utf-8-sig")
+    df_chom_tmp["taux_chomage"] = pd.to_numeric(df_chom_tmp["taux_chomage"].str.replace(",", "."), errors="coerce")
+    min_c, max_c = st.sidebar.slider(
+        "Taux de chômage (%)",
+        float(df_chom_tmp["taux_chomage"].min()),
+        float(df_chom_tmp["taux_chomage"].max()),
+        (float(df_chom_tmp["taux_chomage"].min()), float(df_chom_tmp["taux_chomage"].max()))
+    )
+
+# --- VUE TRANSACTIONS ---
+if view == "Transactions":
+    st.header("Transactions immobilières")
+    st.write("Cette vue affiche les transactions immobilières (en cours d’implémentation).")
+
+# --- VUE ANALYSES SPARK ---
+elif view == "Analyses Spark":
+    st.header("Analyses Spark")
+    st.write("Cette vue affiche les analyses Spark (en cours d’implémentation).")
+
+# --- VUE TEXT MINING ---
+elif view == "Text Mining":
+    st.header("Text Mining")
+    st.write("Cette vue affiche les résultats de text mining (en cours d’implémentation).")
+
 # --- VUE INDICATEURS SOCIO-ÉCO ---
 elif view == "Indicateurs Socio-éco":
-    st.header("Indicateurs Socio-économiques (INSEE)")
+    st.header("📊 Indicateurs Socio-économiques (INSEE)")
 
-    # Chemins vers les fichiers
+    # Chemins
     unemployment_path = os.path.join("data", "processed", "unemployment_dept.csv")
     income_path       = os.path.join("data", "processed", "income_dept.csv")
+    geojson_path      = os.path.join("data", "raw", "geo", "departements_simplifie.geojson")
 
-    # Vérification de l'existence
-    if not os.path.exists(unemployment_path):
-        st.error("Données chômage manquantes. Exécutez ingest_insee_unemployment.py.")
-        st.stop()
-    if not os.path.exists(income_path):
-        st.error("Données revenu médian manquantes. Exécutez ingest_insee_income.py.")
-        st.stop()
+    # Vérifications
+    for path, name in [(unemployment_path, "chômage"), (income_path, "revenu médian")]:
+        if not os.path.exists(path):
+            st.error(f"Données {name} manquantes. Exécutez ingest_insee_{name.replace(' ', '_')}.py.")
+            st.stop()
 
     @st.cache_data
-    def load_data(path):
-        return pd.read_csv(path, dtype=str, encoding="utf-8-sig")
+    def load_df(path: str) -> pd.DataFrame:
+        df = pd.read_csv(path, dtype=str, encoding="utf-8-sig")
+        df.columns = df.columns.str.strip().str.replace("\ufeff", "")
+        if "dept" in df.columns:
+            df = df.rename(columns={"dept": "code"})
+        return df
 
-    # Chargement des DataFrames
-    df_chomage = load_data(unemployment_path)
-    df_income  = load_data(income_path)
-
-    # Nettoyage des noms de colonnes
-    df_chomage.columns = df_chomage.columns.str.strip().str.replace("\ufeff", "")
-    df_income.columns  = df_income.columns.str.strip().str.replace("\ufeff", "")
-
-    # Renommage si nécessaire
-    if "dept" in df_chomage.columns:
-        df_chomage.rename(columns={"dept": "code"}, inplace=True)
-    if "dept" in df_income.columns:
-        df_income.rename(columns={"dept": "code"}, inplace=True)
-
-    # Conversion en numérique
-    df_chomage["taux_chomage"] = (
-        df_chomage["taux_chomage"]
-        .str.replace(",", ".")
-        .pipe(pd.to_numeric, errors="coerce")
-    )
-    df_income["income_median"] = (
-        df_income["income_median"]
-        .str.replace(",", ".")
-        .pipe(pd.to_numeric, errors="coerce")
-    )
-
-    # Chargement de la géométrie
     @st.cache_data
-    def load_geo(path):
+    def load_geo(path: str) -> gpd.GeoDataFrame:
         return gpd.read_file(path)[["code", "geometry"]]
 
-    geo_path = os.path.join("data", "raw", "geo", "departements_simplifie.geojson")
-    geo = load_geo(geo_path)
+    # Chargement
+    df_chom = load_df(unemployment_path)
+    df_inc  = load_df(income_path)
+    geo     = load_geo(geojson_path)
 
-    tab1, tab2, tab3 = st.tabs([
-        "Chômage",
-        "Revenu médian",
-        "Corrélation chômage/revenu"
-    ])
+    # Conversion numérique
+    df_chom["taux_chomage"] = pd.to_numeric(df_chom["taux_chomage"].str.replace(",", "."), errors="coerce")
+    df_inc["income_median"] = pd.to_numeric(df_inc["income_median"].str.replace(",", "."), errors="coerce")
 
+    # Application du filtre taux de chômage
+    df_chom = df_chom.query("@min_c <= taux_chomage <= @max_c")
+
+    # Onglets
+    tab1, tab2, tab3 = st.tabs(["Chômage", "Revenu médian", "Corrélation chômage/revenu"])
+
+    # --- Onglet 1 : Chômage ---
     with tab1:
         st.subheader("Taux de chômage par département (T1 2025)")
-        st.dataframe(df_chomage)
+        st.dataframe(df_chom)
 
-        geo_chom = geo.merge(df_chomage, on="code", how="left")
-        m1 = folium.Map(location=[46.6,2.4], zoom_start=5)
+        # Carte choroplèthe chômage
+        geo1 = geo.merge(df_chom, on="code", how="left")
+        m1 = folium.Map(location=[46.6, 2.4], zoom_start=5)
         folium.Choropleth(
-            geo_data=geo_chom,
-            data=geo_chom,
+            geo_data=geo1,
+            data=geo1,
             columns=["code", "taux_chomage"],
             key_on="feature.properties.code",
             legend_name="Taux de chômage (%)",
             fill_opacity=0.7,
             line_opacity=0.2,
-            nan_fill_color="white",
+            nan_fill_color="white"
         ).add_to(m1)
         folium.LayerControl().add_to(m1)
+        st.subheader("Carte du taux de chômage (T1 2025)")
         st_folium(m1, width=800, height=600)
 
+        # Histogramme
         fig, ax = plt.subplots()
-        ax.hist(df_chomage["taux_chomage"].dropna(), bins=30, edgecolor='black')
+        ax.hist(df_chom["taux_chomage"].dropna(), bins=30, edgecolor='black')
         ax.set_xlabel("Taux de chômage (%)")
         ax.set_ylabel("Nombre de départements")
+        st.subheader("Distribution des taux de chômage")
         st.pyplot(fig)
 
+    # --- Onglet 2 : Revenu médian ---
     with tab2:
         st.subheader("Revenu médian par département (2021, INSEE)")
-        st.dataframe(df_income)
+        st.dataframe(df_inc)
 
-        geo_inc = geo.merge(df_income, on="code", how="left")
-        m2 = folium.Map(location=[46.6,2.4], zoom_start=5)
+        # Carte choroplèthe revenu médian
+        geo2 = geo.merge(df_inc, on="code", how="left")
+        m2 = folium.Map(location=[46.6, 2.4], zoom_start=5)
         folium.Choropleth(
-            geo_data=geo_inc,
-            data=geo_inc,
+            geo_data=geo2,
+            data=geo2,
             columns=["code", "income_median"],
             key_on="feature.properties.code",
             legend_name="Revenu médian (€ / an)",
             fill_opacity=0.7,
             line_opacity=0.2,
-            nan_fill_color="white",
+            nan_fill_color="white"
         ).add_to(m2)
         folium.LayerControl().add_to(m2)
+        st.subheader("Carte du revenu médian (2021)")
         st_folium(m2, width=800, height=600)
 
+        # Histogramme
         fig2, ax2 = plt.subplots()
-        ax2.hist(df_income["income_median"].dropna(), bins=30, edgecolor='black')
+        ax2.hist(df_inc["income_median"].dropna(), bins=30, edgecolor='black')
         ax2.set_xlabel("Revenu médian (€ / an)")
         ax2.set_ylabel("Nombre de départements")
+        st.subheader("Distribution du revenu médian")
         st.pyplot(fig2)
 
+    # --- Onglet 3 : Corrélation taux de chômage / revenu médian ---
     with tab3:
-        st.subheader("Corrélation taux de chômage / revenu médian (départemental)")
-        df_corr = df_chomage.merge(df_income, on="code", how="inner")
-
-        x = df_corr["income_median"].dropna()
-        y = df_corr["taux_chomage"].loc[x.index]
-
-        # Régression linéaire
-        slope, intercept, r_value, p_value, std_err = linregress(x, y)
+        st.subheader("Corrélation taux de chômage ↔ revenu médian")
+        df_corr = df_chom.merge(df_inc, on="code", how="inner")
 
         fig3, ax3 = plt.subplots()
-        ax3.scatter(x, y, alpha=0.7)
-        xx = np.linspace(x.min(), x.max(), 100)
-        yy = intercept + slope * xx
-        ax3.plot(xx, yy, linestyle='--', label=f"$R^2$={r_value**2:.2f}, p={p_value:.3f}")
+        ax3.scatter(df_corr["income_median"], df_corr["taux_chomage"], alpha=0.7)
+        slope, intercept, r_value, p_value, std_err = linregress(
+            df_corr["income_median"], df_corr["taux_chomage"]
+        )
+        xx = np.linspace(df_corr["income_median"].min(), df_corr["income_median"].max(), 100)
+        ax3.plot(xx, intercept + slope * xx, linestyle='--',
+                 label=f"R²={r_value**2:.2f}, p={p_value:.3f}")
         ax3.set_xlabel("Revenu médian (€ / an)")
         ax3.set_ylabel("Taux de chômage (%)")
-        ax3.set_title("Corrélation chômage vs revenu médian")
         ax3.legend()
         st.pyplot(fig3)
 
-        st.info(
-            f"**Coefficient de corrélation (Pearson) : {r_value:.3f}  •  "
-            f"$R^2$ = {r_value**2:.2f}  •  p-value = {p_value:.3f}**"
-        )
-        st.markdown(
-            """
-            - **Valeur proche de -1** : relation inverse  
-            - **Valeur proche de +1** : relation directe  
-            - **p-value < 0.05** : corrélation statistiquement significative
-            """
-        )
-
+        st.info(f"Coefficient de corrélation (Pearson) : {r_value:.3f}")
 conn.close()
