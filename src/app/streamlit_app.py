@@ -15,6 +15,7 @@ from tinydb import TinyDB
 import numpy as np
 from typing import Any, List, cast
 import plotly.express as px
+import matplotlib.ticker as mticker
 
 # 1. Configuration de la page
 st.set_page_config(page_title="Homepedia – Analyses Immobilier France", layout="wide")
@@ -360,9 +361,16 @@ elif view == "Indicateurs Socio-éco":
         ax3.hist(df_pop["population"].dropna(), bins=30, edgecolor='black')
         ax3.set_xlabel("Population")
         ax3.set_ylabel("Nombre de départements")
-        st.subheader("Distribution de la population")
+        ax3.set_title("Distribution de la population")
+
+        # formate les ticks en millions avec 1 décimale, et pivote les labels
+        ax3.xaxis.set_major_formatter(
+            mticker.FuncFormatter(lambda x, pos: f"{x/1e6:.1f} M")
+        )
+        plt.xticks(rotation=45)
+
         st.pyplot(fig3)
-        
+
     # --- Onglet 3 : Corrélation taux de chômage / revenu médian ---
     with tab4:
         st.subheader("Corrélation taux de chômage ↔ revenu médian")
