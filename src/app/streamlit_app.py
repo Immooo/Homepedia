@@ -2,7 +2,7 @@ import os
 import sqlite3
 import math
 import random
-
+from scipy.stats import linregress
 import streamlit as st
 import pandas as pd
 import geopandas as gpd
@@ -12,6 +12,7 @@ from streamlit_folium import st_folium
 from textblob import TextBlob
 from wordcloud import WordCloud
 from tinydb import TinyDB
+import numpy as np
 
 # 1. Configuration de la page
 st.set_page_config(page_title="Homepedia – Analyses Immobilier France", layout="wide")
@@ -201,22 +202,59 @@ elif view == "Text Analysis":
     st.subheader(f"Word Cloud (échantillon {len(sampled)})")
     st.pyplot(fig_wc)
 
-# --- VUE INDICATEURS SOCIO-ECO ---
+# --- VUE INDICATEURS SOCIO-ÉCO ---
 elif view == "Indicateurs Socio-éco":
     st.header("Indicateurs Socio-économiques (INSEE)")
 
+    # Chemins vers les fichiers
     unemployment_path = os.path.join("data", "processed", "unemployment_dept.csv")
-    income_path = os.path.join("data", "processed", "income_dept.csv")
+    income_path       = os.path.join("data", "processed", "income_dept.csv")
 
+    # Vérification de l'existence
     if not os.path.exists(unemployment_path):
-        st.error("Données chômage manquantes. Exécute ingest_insee_unemployment.py.")
+        st.error("Données chômage manquantes. Exécutez ingest_insee_unemployment.py.")
         st.stop()
     if not os.path.exists(income_path):
-        st.error("Données revenu médian manquantes. Exécute ingest_insee_income.py.")
+        st.error("Données revenu médian manquantes. Exécutez ingest_insee_income.py.")
         st.stop()
 
-    df_chomage = pd.read_csv(unemployment_path, dtype={'code': str})
-    df_income = pd.read_csv(income_path, dtype={'code': str})
+    @st.cache_data
+    def load_data(path):
+        return pd.read_csv(path, dtype=str, encoding="utf-8-sig")
+
+    # Chargement des DataFrames
+    df_chomage = load_data(unemployment_path)
+    df_income  = load_data(income_path)
+
+    # Nettoyage des noms de colonnes
+    df_chomage.columns = df_chomage.columns.str.strip().str.replace("\ufeff", "")
+    df_income.columns  = df_income.columns.str.strip().str.replace("\ufeff", "")
+
+    # Renommage si nécessaire
+    if "dept" in df_chomage.columns:
+        df_chomage.rename(columns={"dept": "code"}, inplace=True)
+    if "dept" in df_income.columns:
+        df_income.rename(columns={"dept": "code"}, inplace=True)
+
+    # Conversion en numérique
+    df_chomage["taux_chomage"] = (
+        df_chomage["taux_chomage"]
+        .str.replace(",", ".")
+        .pipe(pd.to_numeric, errors="coerce")
+    )
+    df_income["income_median"] = (
+        df_income["income_median"]
+        .str.replace(",", ".")
+        .pipe(pd.to_numeric, errors="coerce")
+    )
+
+    # Chargement de la géométrie
+    @st.cache_data
+    def load_geo(path):
+        return gpd.read_file(path)[["code", "geometry"]]
+
+    geo_path = os.path.join("data", "raw", "geo", "departements_simplifie.geojson")
+    geo = load_geo(geo_path)
 
     tab1, tab2, tab3 = st.tabs([
         "Chômage",
@@ -227,13 +265,12 @@ elif view == "Indicateurs Socio-éco":
     with tab1:
         st.subheader("Taux de chômage par département (T1 2025)")
         st.dataframe(df_chomage)
-        # Carte choroplèthe chômage
-        geo = gpd.read_file(os.path.join("data","raw","geo","departements_simplifie.geojson"))[["code","geometry"]]
-        geo = geo.merge(df_chomage, on="code", how="left")
+
+        geo_chom = geo.merge(df_chomage, on="code", how="left")
         m1 = folium.Map(location=[46.6,2.4], zoom_start=5)
         folium.Choropleth(
-            geo_data=geo,
-            data=geo,
+            geo_data=geo_chom,
+            data=geo_chom,
             columns=["code", "taux_chomage"],
             key_on="feature.properties.code",
             legend_name="Taux de chômage (%)",
@@ -242,28 +279,23 @@ elif view == "Indicateurs Socio-éco":
             nan_fill_color="white",
         ).add_to(m1)
         folium.LayerControl().add_to(m1)
-        st.subheader("Carte du taux de chômage (T1 2025)")
         st_folium(m1, width=800, height=600)
 
-        # Histogramme
         fig, ax = plt.subplots()
-        ax.hist(df_chomage["taux_chomage"].dropna(), bins=30, color='tab:blue', edgecolor='black')
+        ax.hist(df_chomage["taux_chomage"].dropna(), bins=30, edgecolor='black')
         ax.set_xlabel("Taux de chômage (%)")
         ax.set_ylabel("Nombre de départements")
-        st.subheader("Distribution des taux de chômage")
         st.pyplot(fig)
 
     with tab2:
         st.subheader("Revenu médian par département (2021, INSEE)")
         st.dataframe(df_income)
 
-        # Carte choroplèthe revenu médian
-        geo2 = gpd.read_file(os.path.join("data","raw","geo","departements_simplifie.geojson"))[["code","geometry"]]
-        geo2 = geo2.merge(df_income, on="code", how="left")
+        geo_inc = geo.merge(df_income, on="code", how="left")
         m2 = folium.Map(location=[46.6,2.4], zoom_start=5)
         folium.Choropleth(
-            geo_data=geo2,
-            data=geo2,
+            geo_data=geo_inc,
+            data=geo_inc,
             columns=["code", "income_median"],
             key_on="feature.properties.code",
             legend_name="Revenu médian (€ / an)",
@@ -272,39 +304,44 @@ elif view == "Indicateurs Socio-éco":
             nan_fill_color="white",
         ).add_to(m2)
         folium.LayerControl().add_to(m2)
-        st.subheader("Carte du revenu médian (2021)")
         st_folium(m2, width=800, height=600)
 
-        # Histogramme
         fig2, ax2 = plt.subplots()
-        ax2.hist(df_income["income_median"].dropna(), bins=30, color='tab:green', edgecolor='black')
+        ax2.hist(df_income["income_median"].dropna(), bins=30, edgecolor='black')
         ax2.set_xlabel("Revenu médian (€ / an)")
         ax2.set_ylabel("Nombre de départements")
-        st.subheader("Distribution du revenu médian")
         st.pyplot(fig2)
 
     with tab3:
         st.subheader("Corrélation taux de chômage / revenu médian (départemental)")
-
-        # Jointure
         df_corr = df_chomage.merge(df_income, on="code", how="inner")
 
+        x = df_corr["income_median"].dropna()
+        y = df_corr["taux_chomage"].loc[x.index]
+
+        # Régression linéaire
+        slope, intercept, r_value, p_value, std_err = linregress(x, y)
+
         fig3, ax3 = plt.subplots()
-        ax3.scatter(df_corr["income_median"], df_corr["taux_chomage"], alpha=0.7)
+        ax3.scatter(x, y, alpha=0.7)
+        xx = np.linspace(x.min(), x.max(), 100)
+        yy = intercept + slope * xx
+        ax3.plot(xx, yy, linestyle='--', label=f"$R^2$={r_value**2:.2f}, p={p_value:.3f}")
         ax3.set_xlabel("Revenu médian (€ / an)")
         ax3.set_ylabel("Taux de chômage (%)")
-        ax3.set_title("Corrélation taux de chômage vs revenu médian")
+        ax3.set_title("Corrélation chômage vs revenu médian")
+        ax3.legend()
         st.pyplot(fig3)
 
-        # Calcul corrélation Pearson
-        pearson = df_corr["income_median"].corr(df_corr["taux_chomage"])
-        st.info(f"**Corrélation linéaire (Pearson) : {pearson:.3f}**")
-
+        st.info(
+            f"**Coefficient de corrélation (Pearson) : {r_value:.3f}  •  "
+            f"$R^2$ = {r_value**2:.2f}  •  p-value = {p_value:.3f}**"
+        )
         st.markdown(
             """
-            - **Valeur proche de -1** : relation inverse (plus le revenu est haut, plus le chômage est bas)
-            - **Valeur proche de +1** : relation directe (plus le revenu est haut, plus le chômage est élevé)
-            - **Valeur proche de 0** : pas de corrélation linéaire
+            - **Valeur proche de -1** : relation inverse  
+            - **Valeur proche de +1** : relation directe  
+            - **p-value < 0.05** : corrélation statistiquement significative
             """
         )
 
