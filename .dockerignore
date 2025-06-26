@@ -1,0 +1,7 @@
+.venv
+__pycache__
+*.pyc
+.git
+data/homepedia.db
+outputs/
+notebooks/
