@@ -147,26 +147,81 @@ if view == "Standard":
 
 # === VUE SPARK ANALYSIS ===
 elif view == "Spark Analysis":
-    st.header("Vue Spark Analysis (pré-agrégation)")
-    df_spark = pd.read_sql_query(
-        "SELECT dept AS code, nb_transactions, prix_m2_moyen FROM spark_dept_analysis",
-        conn
-    )
-    st.subheader("Résultats Spark par département")
+    st.header("🔍 Vue Spark Analysis (pré-agrégation)")
+
+    @st.cache_data
+    def load_spark():
+        return pd.read_sql_query(
+            "SELECT dept AS code, nb_transactions, prix_m2_moyen FROM spark_dept_analysis",
+            conn,
+            dtype={"code": str}
+        )
+
+    df_spark = load_spark()
+    st.subheader("Transactions & prix moyen (Spark) par département")
     st.dataframe(df_spark)
-    per_page = st.sidebar.slider("Dépts par page", 5, 50, 10, 5)
-    n_pages = math.ceil(len(df_spark) / per_page)
-    page = st.sidebar.number_input("Page", 1, n_pages, 1)
-    start = (page-1)*per_page
-    df_page = df_spark.iloc[start:start+per_page]
-    st.subheader(f"Page {page}/{n_pages}")
-    st.dataframe(df_page)
-    fig3, ax3 = plt.subplots()
-    df_page.set_index("code")["prix_m2_moyen"].plot.bar(ax=ax3)
-    ax3.set_xlabel("Département")
-    ax3.set_ylabel("Prix moyen (€ / m²)")
-    ax3.tick_params(axis='x', rotation=45)
-    st.pyplot(fig3)
+
+    # — Sidebar : filtrage
+    st.sidebar.subheader("Filtres Spark")
+    min_tx, max_tx = int(df_spark["nb_transactions"].min()), int(df_spark["nb_transactions"].max())
+    tx_range = st.sidebar.slider(
+        "Nombre de transactions", min_value=min_tx, max_value=max_tx,
+        value=(min_tx, max_tx), step=10
+    )
+    price_min, price_max = float(df_spark["prix_m2_moyen"].min()), float(df_spark["prix_m2_moyen"].max())
+    price_range = st.sidebar.slider(
+        "Prix moyen (€ / m²)", min_value=int(price_min), max_value=int(price_max),
+        value=(int(price_min), int(price_max)), step=50
+    )
+
+    mask = (
+        df_spark["nb_transactions"].between(tx_range[0], tx_range[1]) &
+        df_spark["prix_m2_moyen"].between(price_range[0], price_range[1])
+    )
+    df_filtered = df_spark[mask]
+    st.subheader(f"Sous-ensemble ({len(df_filtered)} départements)")
+    st.dataframe(df_filtered)
+
+    # — Carte Choropleth
+    geo_dept = gpd.read_file(os.path.join("data","raw","geo","departements_simplifie.geojson"))[["code","geometry"]]
+    geo_plot = geo_dept.merge(df_filtered, on="code", how="left")
+    m_spark = folium.Map(location=[46.6,2.4], zoom_start=5)
+    folium.Choropleth(
+        geo_data=geo_plot,
+        data=geo_plot,
+        columns=["code","nb_transactions"],
+        key_on="feature.properties.code",
+        legend_name="Nb transactions (Spark)",
+        fill_opacity=0.7,
+        line_opacity=0.2,
+        nan_fill_color="white",
+    ).add_to(m_spark)
+    st.subheader("Carte des transactions (Spark)")
+    st_folium(m_spark, width=800, height=500)
+
+    # — Histogramme nb_transactions
+    fig_tx, ax_tx = plt.subplots()
+    ax_tx.hist(df_filtered["nb_transactions"], bins=30, edgecolor="black")
+    ax_tx.set_xlabel("Nombre de transactions")
+    ax_tx.set_ylabel("Nombre de départements")
+    st.subheader("Distribution du nombre de transactions")
+    st.pyplot(fig_tx)
+
+    # — Histogramme prix_m2_moyen
+    fig_pr, ax_pr = plt.subplots()
+    ax_pr.hist(df_filtered["prix_m2_moyen"], bins=30, edgecolor="black")
+    ax_pr.set_xlabel("Prix moyen (€ / m²)")
+    ax_pr.set_ylabel("Nombre de départements")
+    st.subheader("Distribution du prix moyen (Spark)")
+    st.pyplot(fig_pr)
+
+    # — Scatter prix vs nb_transactions
+    fig_sc, ax_sc = plt.subplots()
+    ax_sc.scatter(df_filtered["nb_transactions"], df_filtered["prix_m2_moyen"], alpha=0.7)
+    ax_sc.set_xlabel("Nombre de transactions")
+    ax_sc.set_ylabel("Prix moyen (€ / m²)")
+    st.subheader("Transactions vs Prix moyen")
+    st.pyplot(fig_sc)
 
 # === VUE TEXT ANALYSIS ===
 elif view == "Text Analysis":
