@@ -17,6 +17,28 @@ from typing import Any, List
 import matplotlib.ticker as mticker
 import seaborn as sns
 
+COL_RENAME = {
+    # clés communes
+    "code":            "Département",
+    "dept":            "Département",
+    "code_region":     "Région",
+    "nb_transactions": "Nb transactions",
+    "prix_m2_moyen":   "Prix moyen €/m²",
+    "valeur_fonciere": "Valeur foncière €",
+    "surface_reelle_bati": "Surface bâtie m²",
+    "prix_m2":         "Prix €/m²",
+    "population":      "Population",
+    "income_median":   "Revenu médian €",
+    "taux_chomage":    "Taux chômage %",
+    "poverty_rate":    "Taux pauvreté %",
+}
+
+def beautify(df: pd.DataFrame) -> pd.DataFrame:
+    return df.rename(columns={k: v for k, v in COL_RENAME.items() if k in df.columns})
+
+def display_df(df: pd.DataFrame, n: int | None = None):
+    st.dataframe(beautify(df if n is None else df.head(n)))
+
 # 1. Configuration de la page
 st.set_page_config(page_title="Homepedia – Analyses Immobilier France", layout="wide")
 st.title("🏠 Homepedia – Analyses Immobilier France")
@@ -90,23 +112,28 @@ if view == "Standard":
     # --- Chargement filtré ---
     @st.cache_data(show_spinner=False)
     def load_transactions(start, end, type_sel, pmin, pmax):
+        start_iso = start.strftime("%Y-%m-%d")
+        end_iso   = end.strftime("%Y-%m-%d")
+
         query = """
             SELECT *,
-                   valeur_fonciere / surface_reelle_bati AS prix_m2,
-                   substr(code_postal,1,2) AS dept
+                valeur_fonciere / surface_reelle_bati AS prix_m2,
+                substr(code_postal,1,2)             AS dept
             FROM   transactions
             WHERE  date_mutation BETWEEN ? AND ?
-              AND  surface_reelle_bati > 0
-              AND  valeur_fonciere IS NOT NULL
-              AND  (valeur_fonciere / surface_reelle_bati) BETWEEN ? AND ?
+            AND  surface_reelle_bati > 0
+            AND  valeur_fonciere IS NOT NULL
+            AND  (valeur_fonciere / surface_reelle_bati) BETWEEN ? AND ?
         """
-        params = [start, end, pmin, pmax]
+        params = [start_iso, end_iso, pmin, pmax]
 
         if type_sel != "Tous":
             query += " AND type_local = ?"
             params.append(type_sel)
 
-        return pd.read_sql_query(query, conn, params=params, parse_dates=["date_mutation"])
+        return pd.read_sql_query(
+            query, conn, params=params, parse_dates=["date_mutation"]
+        )
 
     tx = load_transactions(start_date, end_date, choix_type, price_range[0], price_range[1])
 
@@ -529,5 +556,42 @@ elif view == "Région":
         ax.set_yticklabels(corr_reg.index, rotation=0)
         st.pyplot(fig)
 
+# === VUE MÉTHODOLOGIE ===
+elif view == "Méthodologie":
+    st.header("📚 Méthodologie & Choix techniques")
+
+    st.markdown("""
+    ### Pré-processing des données
+    - **Transactions DVF 2024** : nettoyage des valeurs foncières / surfaces, suppression des valeurs aberrantes, extraction du code département.
+    - **Indicateurs INSEE (revenu, chômage, pauvreté, population)** : filtrage des mesures fiables, conversion numérique, agrégation au niveau départemental.
+    - Tous les scripts sont disponibles dans `src/backend/ingest_*.py`.
+
+    ### Choix des métriques
+    | Métrique | Rôle dans l’analyse |
+    |----------|--------------------|
+    | Prix moyen au m² | Indicateur principal du marché immobilier |
+    | Revenu médian | Pouvoir d’achat local |
+    | Taux de chômage | Dynamique économique |
+    | Taux de pauvreté | Vulnérabilité socio-éco |
+    | Population | Taille du marché |
+
+    ### Librairies data science mises en œuvre
+    - **pandas**, **geopandas** : manipulation tabulaire & géospatiale  
+    - **matplotlib / seaborn** : visualisation statistique  
+    - **PySpark** : agrégations rapides sur ~2 M de lignes DVF  
+    - **folium** : cartes choroplèthes interactives
+
+    ### Architecture
+    ```text
+    CSV / Scraping  →  Scripts ETL  →  SQLite (homepedia.db)
+                          │
+                          └─► Streamlit 5 vues  →  Docker
+    ```
+
+    ### Limites & pistes
+    - Ajouter indicateurs démographie/âge  
+    - Tests unitaires sur chaque ingestion  
+    - Déploiement cloud (railway.app, Render, etc.)
+    """)
 # Clôture
 conn.close()
