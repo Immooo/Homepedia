@@ -10,6 +10,9 @@ ENV PYTHONUNBUFFERED=1 \
 # 2. Répertoire de travail
 WORKDIR /app
 
+# Installer les libs Python pour scraping
+RUN pip install --no-cache-dir requests beautifulsoup4
+
 # 3. Copier uniquement les fichiers nécessaires pour installer les dépendances
 COPY requirements.txt .
 

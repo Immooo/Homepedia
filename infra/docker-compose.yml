@@ -11,6 +11,9 @@ services:
       - ../data:/app/data
       - ~/.cache/pip:/root/.cache/pip
       - ../src:/app/src
+      - ./data:/home/app/data
+      command: >
+      bash -c "python src/backend/scraper_listings.py && streamlit run src/app/streamlit_app.py"
     ports:
       - "8501:8501"
     environment:
