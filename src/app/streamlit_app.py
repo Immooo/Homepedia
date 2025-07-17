@@ -42,7 +42,11 @@ conn = sqlite3.connect(DB_PATH)
 if view == "Standard":
     st.header("Transactions immobilières (live SQL + Pandas)")
 
-    # --- Filtres ---
+    # --- Connexions rapides ---
+    def sql_scalar(query: str):
+        return conn.execute(query).fetchone()[0]
+
+    # --- Période ---
     st.sidebar.subheader("Filtres Transactions")
     min_date = pd.to_datetime("2024-01-01")
     max_date = pd.to_datetime("2024-12-31")
@@ -52,74 +56,86 @@ if view == "Standard":
         min_value=min_date.date(),
         max_value=max_date.date()
     )
-    start_date = pd.to_datetime(raw_dates[0])
-    end_date = pd.to_datetime(raw_dates[1])
+    
+    if isinstance(raw_dates, tuple):
+        start_date = pd.to_datetime(raw_dates[0])
+        end_date   = pd.to_datetime(raw_dates[1] if len(raw_dates) > 1 else raw_dates[0])
+    else:  
+        start_date = end_date = pd.to_datetime(raw_dates)
 
+    # --- Type de bien (liste depuis la base) ---
+    type_list = ["Tous"] + [
+        r[0] for r in conn.execute(
+            "SELECT DISTINCT type_local FROM transactions WHERE type_local IS NOT NULL ORDER BY 1"
+        ).fetchall()
+    ]
+    choix_type = st.sidebar.selectbox("Type de logement", type_list)
+
+    # --- Min / Max prix_m2 globaux (pour le slider) ---
+    pmin_glob, pmax_glob = conn.execute("""
+        SELECT
+            MIN(valeur_fonciere / surface_reelle_bati),
+            MAX(valeur_fonciere / surface_reelle_bati)
+        FROM transactions
+        WHERE surface_reelle_bati > 0
+          AND valeur_fonciere IS NOT NULL
+    """).fetchone()
+
+    price_range = st.sidebar.slider(
+        "Prix au m²",
+        int(pmin_glob), int(pmax_glob),
+        (int(pmin_glob), int(pmax_glob))
+    )
+
+    # --- Chargement filtré ---
     @st.cache_data(show_spinner=False)
-    def load_transactions():
-        df = pd.read_sql_query(
-            "SELECT * FROM transactions", conn, parse_dates=["date_mutation"]
-        )
-        df["surface_reelle_bati"] = pd.to_numeric(df["surface_reelle_bati"], errors="coerce")
-        df["valeur_fonciere"] = pd.to_numeric(df["valeur_fonciere"], errors="coerce")
-        df = df[df["surface_reelle_bati"] > 0]
-        df = df[df["valeur_fonciere"].notna()]
-        df["prix_m2"] = df["valeur_fonciere"] / df["surface_reelle_bati"]
-        df["dept"] = df["code_postal"].astype(str).str[:2].str.zfill(2)
-        return df
+    def load_transactions(start, end, type_sel, pmin, pmax):
+        query = """
+            SELECT *,
+                   valeur_fonciere / surface_reelle_bati AS prix_m2,
+                   substr(code_postal,1,2) AS dept
+            FROM   transactions
+            WHERE  date_mutation BETWEEN ? AND ?
+              AND  surface_reelle_bati > 0
+              AND  valeur_fonciere IS NOT NULL
+              AND  (valeur_fonciere / surface_reelle_bati) BETWEEN ? AND ?
+        """
+        params = [start, end, pmin, pmax]
 
-    tx = load_transactions()
+        if type_sel != "Tous":
+            query += " AND type_local = ?"
+            params.append(type_sel)
 
-    # --- KPIs synthétiques & export complet ---
+        return pd.read_sql_query(query, conn, params=params, parse_dates=["date_mutation"])
+
+    tx = load_transactions(start_date, end_date, choix_type, price_range[0], price_range[1])
+
+    # --- KPIs & export ---
     col1, col2, col3 = st.columns(3)
     col1.metric("Transactions chargées", f"{len(tx):,}")
     col2.metric("Surface médiane (m²)", f"{tx['surface_reelle_bati'].median():.1f}")
     col3.metric("Prix moyen €/m²", f"{tx['prix_m2'].mean():.2f}")
 
     st.download_button(
-        label="📥 Exporter toutes les transactions (CSV)",
-        data=tx.to_csv(index=False).encode("utf-8"),
-        file_name="transactions_2024.csv",
-        mime="text/csv",
-        help="CSV non filtré (transactions DVF 2024 complètes)"
+        "📥 Exporter ces transactions (CSV)",
+        tx.to_csv(index=False).encode("utf-8"),
+        file_name="transactions_filtrees.csv",
+        mime="text/csv"
     )
 
-    # --- Aperçu brut ---
-    st.subheader("Aperçu des transactions brutes")
+    st.subheader("Aperçu des transactions filtrées")
     st.dataframe(tx.head(10))
-
-    # --- Filtres spécifiques ---
-    types = ["Tous"] + sorted(tx["type_local"].dropna().unique().tolist())
-    choix_type = st.sidebar.selectbox("Type de logement", types)
-
-    pmin, pmax = tx["prix_m2"].quantile([0.01, 0.99])
-    price_range = st.sidebar.slider(
-        "Prix au m²", int(pmin), int(pmax), (int(pmin), int(pmax))
-    )
-
-    mask = (
-        (tx["date_mutation"] >= start_date) &
-        (tx["date_mutation"] <= end_date)
-    )
-    if choix_type != "Tous":
-        mask &= tx["type_local"] == choix_type
-    mask &= tx["prix_m2"].between(price_range[0], price_range[1])
-    df_filt = tx[mask]
-
-    st.subheader("Transactions après filtres")
-    st.dataframe(df_filt.head(10))
 
     # --- Carte choroplèthe ---
     prix_dept = (
-        df_filt.groupby("dept")["prix_m2"]
-               .mean()
-               .reset_index()
-               .rename(columns={"dept": "code", "prix_m2": "prix_m2_moyen"})
+        tx.groupby("dept")["prix_m2"]
+          .mean()
+          .reset_index()
+          .rename(columns={"dept": "code", "prix_m2": "prix_m2_moyen"})
     )
-    geo = gpd.read_file(
-        os.path.join("data", "raw", "geo", "departements_simplifie.geojson")
-    )[["code", "geometry"]]
+    geo = gpd.read_file("data/raw/geo/departements_simplifie.geojson")[["code", "geometry"]]
     geo = geo.merge(prix_dept, on="code", how="left")
+
     m = folium.Map(location=[46.6, 2.4], zoom_start=5)
     folium.Choropleth(
         geo_data=geo,
@@ -135,42 +151,38 @@ if view == "Standard":
     st_folium(m, width=800, height=600)
 
     # --- Histogramme ---
+    st.subheader("Distribution des prix au m²")
     fig1, ax1 = plt.subplots()
-    ax1.hist(
-        df_filt["prix_m2"].dropna(), bins=50,
-        range=(price_range[0], price_range[1]), edgecolor="black"
-    )
+    ax1.hist(tx["prix_m2"], bins=50, edgecolor="black")
     ax1.set_xlabel("Prix (€ / m²)")
     ax1.set_ylabel("Nombre de transactions")
-    st.subheader("Distribution des prix au m²")
     st.pyplot(fig1)
 
-    # --- Nouveau box-plot par type de bien ---
+    # --- Box-plot ---
     st.subheader("Dispersion prix/m² par type de bien")
-
     fig_box, ax_box = plt.subplots(figsize=(9, 4))
     tx.boxplot(column="prix_m2", by="type_local", ax=ax_box, showfliers=False)
-
     ax_box.set_xlabel("")
     ax_box.set_ylabel("€ / m²")
-    ax_box.set_title("")                      
+    ax_box.set_title("")
     ax_box.tick_params(axis="x", labelrotation=45)
-    xt = ax_box.get_xticklabels()
     ax_box.set_xticklabels(
-        [t.get_text().replace(" ", "\n", 1) if len(t.get_text()) > 15 else t.get_text() for t in xt],
-        ha="right",
-        fontsize=8
+        [lab.get_text().replace(" ", "\n", 1) for lab in ax_box.get_xticklabels()],
+        ha="right", fontsize=8
     )
     st.pyplot(fig_box)
 
     # --- Scatter population ---
     pop = pd.read_sql_query("SELECT * FROM population", conn)
     prix_pop = prix_dept.merge(pop, on="code", how="left")
+
+    st.subheader("Population vs Prix moyen")
     fig2, ax2 = plt.subplots()
     ax2.scatter(prix_pop["population"], prix_pop["prix_m2_moyen"], alpha=0.6)
-    ax2.set_xlabel("Population départementale")
+    ax2.set_xlabel("Population départementale (habitants)")
     ax2.set_ylabel("Prix moyen (€ / m²)")
-    st.subheader("Population vs Prix moyen")
+    import matplotlib.ticker as mticker
+    ax2.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{x/1e6:.1f} M"))
     st.pyplot(fig2)
 
 # === VUE SPARK ANALYSIS ===
@@ -230,10 +242,8 @@ elif view == "Indicateurs Socio-éco":
     st.header("📊 Indicateurs Socio-économiques (INSEE)")
 
     # Filtres Socio-éco
-    df_chom_tmp = pd.read_csv(
-        "data/processed/unemployment_dept.csv",
-        dtype=str, encoding="utf-8-sig"
-    )
+    df_chom_tmp = pd.read_parquet("data/processed/unemployment_dept.parquet")
+                                  
     df_chom_tmp["taux_chomage"] = pd.to_numeric(
         df_chom_tmp["taux_chomage"].str.replace(",", "."), errors="coerce"
     )
@@ -245,11 +255,11 @@ elif view == "Indicateurs Socio-éco":
     )
 
     # Chemins
-    unemployment_path = os.path.join("data", "processed", "unemployment_dept.csv")
-    income_path       = os.path.join("data", "processed", "income_dept.csv")
-    population_path   = os.path.join("data", "processed", "population_dept.csv")
-    poverty_path      = os.path.join("data", "processed", "poverty_dept.csv")
-    geojson_path      = os.path.join("data", "raw", "geo", "departements_simplifie.geojson")
+    unemployment_path = "data/processed/unemployment_dept.parquet"
+    income_path       = "data/processed/income_dept.parquet"
+    population_path   = "data/processed/population_dept.parquet"
+    poverty_path      = "data/processed/poverty_dept.parquet"
+    geojson_path      = "data/raw/geo/departements_simplifie.geojson"
 
     # Vérifications
     for path, name in [
@@ -259,15 +269,13 @@ elif view == "Indicateurs Socio-éco":
         (poverty_path,      "pauvreté")
     ]:
         if not os.path.exists(path):
-            st.error(f"Données {name} manquantes.")
+            st.error(f"Données {name} manquantes ({path}).")
             st.stop()
 
     # Chargement
-    @st.cache_data
-    def load_df(path):
-        df = pd.read_csv(path, dtype=str, encoding="utf-8-sig")
-        df.columns = df.columns.str.strip().str.replace("\ufeff", "")
-        return df
+    @st.cache_data(show_spinner=False)
+    def load_df(path: str) -> pd.DataFrame:
+        return pd.read_parquet(path)   
 
     @st.cache_data
     def load_geo(path):
@@ -521,41 +529,5 @@ elif view == "Région":
         ax.set_yticklabels(corr_reg.index, rotation=0)
         st.pyplot(fig)
 
-elif view == "Méthodologie":
-    st.header("📚 Méthodologie & Choix techniques")
-
-    st.markdown("""
-    ### Pré-processing des données
-    - **Transactions DVF 2024** : nettoyage des valeurs foncières / surfaces, suppression des valeurs aberrantes, extraction du code département.
-    - **Indicateurs INSEE (revenu, chômage, pauvreté, population)** : filtrage des mesures fiables, conversion numérique, agrégation au niveau départemental.
-    - Tous les scripts sont disponibles dans `src/backend/ingest_*.py`.
-
-    ### Choix des métriques
-    | Métrique | Rôle dans l’analyse |
-    |----------|--------------------|
-    | Prix moyen au m² | Indicateur principal du marché immobilier |
-    | Revenu médian | Pouvoir d’achat local |
-    | Taux de chômage | Dynamique économique |
-    | Taux de pauvreté | Vulnérabilité socio-éco |
-    | Population | Taille du marché |
-
-    ### Librairies data science mises en œuvre
-    - **pandas**, **geopandas** : manipulation tabulaire & géospatiale  
-    - **matplotlib / seaborn** : visualisation statistique  
-    - **PySpark** : agrégations rapides sur ~2 M de lignes DVF  
-    - **folium** : cartes choroplèthes interactives
-
-    ### Architecture
-    ```text
-    CSV / Scraping  →  Scripts ETL  →  SQLite (homepedia.db)
-                          │
-                          └─► Streamlit 5 vues  →  Docker
-    ```
-
-    ### Limites & pistes
-    - Ajouter indicateurs démographie/âge  
-    - Tests unitaires sur chaque ingestion  
-    - Déploiement cloud (railway.app, Render, etc.)
-    """)
 # Clôture
 conn.close()

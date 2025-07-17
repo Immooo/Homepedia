@@ -8,23 +8,26 @@ def has_col(conn: sqlite3.Connection, table: str, column: str) -> bool:
 def safe_index(cur, table: str, column: str, suffix: str):
     if has_col(cur.connection, table, column):
         idx_name = f"idx_{table}_{suffix}"
-        cur.execute(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table}({column})")
+        cur.execute(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table}({column});")
 
 def create_indexes(conn: sqlite3.Connection) -> None:
     c = conn.cursor()
 
-    # DVF
+    # ---- DVF transactions ----
     safe_index(c, "transactions", "date_mutation", "date")
     safe_index(c, "transactions", "commune", "commune")
+    # composite : date_mutation + type_local + valeur_fonciere
+    c.execute("""
+        CREATE INDEX IF NOT EXISTS idx_tx_date_type_price
+        ON transactions(date_mutation, type_local, valeur_fonciere);
+    """)
 
-    # Indicateurs INSEE
+    # ---- Indicateurs INSEE ----
     for tbl in ("unemployment", "income", "population", "poverty"):
         safe_index(c, tbl, "code", "code")
 
-    # Agrégat Spark par département
+    # ---- Agrégats ----
     safe_index(c, "spark_dept_analysis", "dept", "dept")
-
-    # Agrégat par région (table déjà là)
     safe_index(c, "region_analysis", "code_region", "code_region")
 
     conn.commit()
