@@ -29,7 +29,8 @@ view = st.sidebar.radio(
         "Spark Analysis",
         "Text Analysis",
         "Indicateurs Socio-éco",
-        "Région"
+        "Région",
+        "Méthodologie"
     ]
 )
 
@@ -493,5 +494,45 @@ elif view == "Région":
         ax.set_yticklabels(corr_reg.index, rotation=0)
         st.pyplot(fig)
 
+elif view == "Méthodologie":
+    st.header("📚 Méthodologie et Choix Techniques")
+
+    st.markdown("""
+    ### Préprocessing des données
+    - Nettoyage des données brutes INSEE et DVF
+    - Extraction des codes départements adaptés (gestion Corse, DOM-TOM)
+    - Conversion des formats numériques (virgules → points, espaces supprimés)
+    - Agrégation des indicateurs au niveau départemental (médiane, moyenne)
+    - Stockage dans une base SQLite relationnelle pour rapidité et simplicité
+    
+    ### Choix des métriques
+    - Prix moyen au m² : mesure principale des transactions immobilières
+    - Revenu médian : indicateur du niveau de vie départemental
+    - Taux de chômage : impact socio-économique majeur
+    - Taux de pauvreté : indicateur complémentaire
+    - Population : taille des marchés immobiliers
+    
+    ### Librairies utilisées
+    - **pandas** : manipulation des données tabulaires
+    - **geopandas** : données géographiques et cartes
+    - **matplotlib & seaborn** : visualisations statistiques
+    - **PySpark** : traitement big data sur DVF volumineux
+    - **folium** : cartes interactives choroplèthes
+    
+    ### Architecture technique
+    - Base SQLite centralisée (homepedia.db)
+    - Scripts Python d’ingestion et nettoyage automatisés
+    - Frontend Streamlit multi-onglets pour analyses variées
+    - Docker pour environnement reproductible
+    """)
+
+    st.subheader("Limites et perspectives")
+    st.markdown("""
+    - Gestion des données manquantes à améliorer
+    - Extension aux indicateurs INSEE supplémentaires
+    - Ajout de tests unitaires et automatisation
+    - Améliorations UX (export, filtres avancés)
+    - Préparation déploiement et mise en production
+    """)
 # Clôture
 conn.close()
