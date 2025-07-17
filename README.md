@@ -68,5 +68,7 @@ python src/backend/spark_dvf_analysis.py
 
 streamlit run src/app/streamlit_app.py
 
+![Schéma ERD Homepedia](docs/homepedia_erd.png)
+
 Auteurs
 Adrien TROISE — Étudiant architecte logiciel, Epitech Nice 2023-2025
