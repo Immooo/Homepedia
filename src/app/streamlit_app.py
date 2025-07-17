@@ -42,7 +42,7 @@ conn = sqlite3.connect(DB_PATH)
 if view == "Standard":
     st.header("Transactions immobilières (live SQL + Pandas)")
 
-    # Filtres
+    # --- Filtres ---
     st.sidebar.subheader("Filtres Transactions")
     min_date = pd.to_datetime("2024-01-01")
     max_date = pd.to_datetime("2024-12-31")
@@ -55,17 +55,13 @@ if view == "Standard":
     start_date = pd.to_datetime(raw_dates[0])
     end_date = pd.to_datetime(raw_dates[1])
 
-    @st.cache_data
+    @st.cache_data(show_spinner=False)
     def load_transactions():
         df = pd.read_sql_query(
             "SELECT * FROM transactions", conn, parse_dates=["date_mutation"]
         )
-        df["surface_reelle_bati"] = pd.to_numeric(
-            df["surface_reelle_bati"], errors="coerce"
-        )
-        df["valeur_fonciere"] = pd.to_numeric(
-            df["valeur_fonciere"], errors="coerce"
-        )
+        df["surface_reelle_bati"] = pd.to_numeric(df["surface_reelle_bati"], errors="coerce")
+        df["valeur_fonciere"] = pd.to_numeric(df["valeur_fonciere"], errors="coerce")
         df = df[df["surface_reelle_bati"] > 0]
         df = df[df["valeur_fonciere"].notna()]
         df["prix_m2"] = df["valeur_fonciere"] / df["surface_reelle_bati"]
@@ -73,20 +69,34 @@ if view == "Standard":
         return df
 
     tx = load_transactions()
+
+    # --- KPIs synthétiques & export complet ---
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Transactions chargées", f"{len(tx):,}")
+    col2.metric("Surface médiane (m²)", f"{tx['surface_reelle_bati'].median():.1f}")
+    col3.metric("Prix moyen €/m²", f"{tx['prix_m2'].mean():.2f}")
+
+    st.download_button(
+        label="📥 Exporter toutes les transactions (CSV)",
+        data=tx.to_csv(index=False).encode("utf-8"),
+        file_name="transactions_2024.csv",
+        mime="text/csv",
+        help="CSV non filtré (transactions DVF 2024 complètes)"
+    )
+
+    # --- Aperçu brut ---
     st.subheader("Aperçu des transactions brutes")
     st.dataframe(tx.head(10))
 
-    # Filtre Type
+    # --- Filtres spécifiques ---
     types = ["Tous"] + sorted(tx["type_local"].dropna().unique().tolist())
     choix_type = st.sidebar.selectbox("Type de logement", types)
 
-    # Filtre Prix
     pmin, pmax = tx["prix_m2"].quantile([0.01, 0.99])
     price_range = st.sidebar.slider(
         "Prix au m²", int(pmin), int(pmax), (int(pmin), int(pmax))
     )
 
-    # Application des filtres
     mask = (
         (tx["date_mutation"] >= start_date) &
         (tx["date_mutation"] <= end_date)
@@ -99,44 +109,61 @@ if view == "Standard":
     st.subheader("Transactions après filtres")
     st.dataframe(df_filt.head(10))
 
-    # Carte choroplèthe
+    # --- Carte choroplèthe ---
     prix_dept = (
         df_filt.groupby("dept")["prix_m2"]
                .mean()
                .reset_index()
-               .rename(columns={"dept":"code","prix_m2":"prix_m2_moyen"})
+               .rename(columns={"dept": "code", "prix_m2": "prix_m2_moyen"})
     )
     geo = gpd.read_file(
-        os.path.join("data","raw","geo","departements_simplifie.geojson")
-    )[["code","geometry"]]
+        os.path.join("data", "raw", "geo", "departements_simplifie.geojson")
+    )[["code", "geometry"]]
     geo = geo.merge(prix_dept, on="code", how="left")
-    m = folium.Map(location=[46.6,2.4], zoom_start=5)
+    m = folium.Map(location=[46.6, 2.4], zoom_start=5)
     folium.Choropleth(
         geo_data=geo,
         data=geo,
-        columns=["code","prix_m2_moyen"],
+        columns=["code", "prix_m2_moyen"],
         key_on="feature.properties.code",
         legend_name="Prix moyen (€ / m²)",
         fill_opacity=0.7,
         line_opacity=0.2,
         nan_fill_color="white"
     ).add_to(m)
-    folium.LayerControl().add_to(m)
     st.subheader("Carte du prix moyen au m²")
     st_folium(m, width=800, height=600)
 
-    # Histogramme
+    # --- Histogramme ---
     fig1, ax1 = plt.subplots()
     ax1.hist(
         df_filt["prix_m2"].dropna(), bins=50,
-        range=(price_range[0], price_range[1]), edgecolor='black'
+        range=(price_range[0], price_range[1]), edgecolor="black"
     )
     ax1.set_xlabel("Prix (€ / m²)")
     ax1.set_ylabel("Nombre de transactions")
     st.subheader("Distribution des prix au m²")
     st.pyplot(fig1)
 
-    # Scatter population
+    # --- Nouveau box-plot par type de bien ---
+    st.subheader("Dispersion prix/m² par type de bien")
+
+    fig_box, ax_box = plt.subplots(figsize=(9, 4))
+    tx.boxplot(column="prix_m2", by="type_local", ax=ax_box, showfliers=False)
+
+    ax_box.set_xlabel("")
+    ax_box.set_ylabel("€ / m²")
+    ax_box.set_title("")                      
+    ax_box.tick_params(axis="x", labelrotation=45)
+    xt = ax_box.get_xticklabels()
+    ax_box.set_xticklabels(
+        [t.get_text().replace(" ", "\n", 1) if len(t.get_text()) > 15 else t.get_text() for t in xt],
+        ha="right",
+        fontsize=8
+    )
+    st.pyplot(fig_box)
+
+    # --- Scatter population ---
     pop = pd.read_sql_query("SELECT * FROM population", conn)
     prix_pop = prix_dept.merge(pop, on="code", how="left")
     fig2, ax2 = plt.subplots()
@@ -495,44 +522,40 @@ elif view == "Région":
         st.pyplot(fig)
 
 elif view == "Méthodologie":
-    st.header("📚 Méthodologie et Choix Techniques")
+    st.header("📚 Méthodologie & Choix techniques")
 
     st.markdown("""
-    ### Préprocessing des données
-    - Nettoyage des données brutes INSEE et DVF
-    - Extraction des codes départements adaptés (gestion Corse, DOM-TOM)
-    - Conversion des formats numériques (virgules → points, espaces supprimés)
-    - Agrégation des indicateurs au niveau départemental (médiane, moyenne)
-    - Stockage dans une base SQLite relationnelle pour rapidité et simplicité
-    
+    ### Pré-processing des données
+    - **Transactions DVF 2024** : nettoyage des valeurs foncières / surfaces, suppression des valeurs aberrantes, extraction du code département.
+    - **Indicateurs INSEE (revenu, chômage, pauvreté, population)** : filtrage des mesures fiables, conversion numérique, agrégation au niveau départemental.
+    - Tous les scripts sont disponibles dans `src/backend/ingest_*.py`.
+
     ### Choix des métriques
-    - Prix moyen au m² : mesure principale des transactions immobilières
-    - Revenu médian : indicateur du niveau de vie départemental
-    - Taux de chômage : impact socio-économique majeur
-    - Taux de pauvreté : indicateur complémentaire
-    - Population : taille des marchés immobiliers
-    
-    ### Librairies utilisées
-    - **pandas** : manipulation des données tabulaires
-    - **geopandas** : données géographiques et cartes
-    - **matplotlib & seaborn** : visualisations statistiques
-    - **PySpark** : traitement big data sur DVF volumineux
-    - **folium** : cartes interactives choroplèthes
-    
-    ### Architecture technique
-    - Base SQLite centralisée (homepedia.db)
-    - Scripts Python d’ingestion et nettoyage automatisés
-    - Frontend Streamlit multi-onglets pour analyses variées
-    - Docker pour environnement reproductible
-    """)
+    | Métrique | Rôle dans l’analyse |
+    |----------|--------------------|
+    | Prix moyen au m² | Indicateur principal du marché immobilier |
+    | Revenu médian | Pouvoir d’achat local |
+    | Taux de chômage | Dynamique économique |
+    | Taux de pauvreté | Vulnérabilité socio-éco |
+    | Population | Taille du marché |
 
-    st.subheader("Limites et perspectives")
-    st.markdown("""
-    - Gestion des données manquantes à améliorer
-    - Extension aux indicateurs INSEE supplémentaires
-    - Ajout de tests unitaires et automatisation
-    - Améliorations UX (export, filtres avancés)
-    - Préparation déploiement et mise en production
+    ### Librairies data science mises en œuvre
+    - **pandas**, **geopandas** : manipulation tabulaire & géospatiale  
+    - **matplotlib / seaborn** : visualisation statistique  
+    - **PySpark** : agrégations rapides sur ~2 M de lignes DVF  
+    - **folium** : cartes choroplèthes interactives
+
+    ### Architecture
+    ```text
+    CSV / Scraping  →  Scripts ETL  →  SQLite (homepedia.db)
+                          │
+                          └─► Streamlit 5 vues  →  Docker
+    ```
+
+    ### Limites & pistes
+    - Ajouter indicateurs démographie/âge  
+    - Tests unitaires sur chaque ingestion  
+    - Déploiement cloud (railway.app, Render, etc.)
     """)
 # Clôture
 conn.close()
