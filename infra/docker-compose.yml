@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  homepedia:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: homepedia-app:latest
+    container_name: homepedia-app
+    volumes:
+      - ../data:/app/data
+      - ~/.cache/pip:/root/.cache/pip
+      - ../src:/app/src
+      - ./data:/home/app/data
+      command: >
+      bash -c "python src/backend/scraper_listings.py && streamlit run src/app/streamlit_app.py"
+    ports:
+      - "8501:8501"
+    environment:
+      - STREAMLIT_SERVER_HEADLESS=true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8501 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

@@ -1,0 +1,12 @@
+digraph ERD {
+  rankdir=LR;
+  node [shape=record, fontsize=10, fontname=Helvetica];
+  income [label="{income|<code>code|<income_median>income_median}"];
+  population [label="{population|<code>code|<population>population}"];
+  poverty [label="{poverty|<code>code|<poverty_rate>poverty_rate}"];
+  region_analysis [label="{region_analysis|<code_region>code_region|<nb_transactions>nb_transactions|<prix_m2_moyen>prix_m2_moyen|<population>population|<income>income|<unemployment>unemployment|<poverty>poverty}"];
+  region_indicators [label="{region_indicators|<code_region>code_region|<population>population|<income_median>income_median|<poverty_rate>poverty_rate|<taux_chomage>taux_chomage|<ingested_at>ingested_at}"];
+  spark_dept_analysis [label="{spark_dept_analysis|<dept>dept|<nb_transactions>nb_transactions|<prix_m2_moyen>prix_m2_moyen}"];
+  transactions [label="{transactions|<id>id|<date_mutation>date_mutation|<nature_mutation>nature_mutation|<valeur_fonciere>valeur_fonciere|<code_postal>code_postal|<commune>commune|<type_local>type_local|<surface_reelle_bati>surface_reelle_bati|<nombre_pieces_principales>nombre_pieces_principales}"];
+  unemployment [label="{unemployment|<code>code|<libelle>libelle|<taux_chomage>taux_chomage}"];
+}

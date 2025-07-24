@@ -32,4 +32,38 @@ venv/
 *.log
 
 # VS Code
+.vscode/# Fichiers/dossiers spécifiques à ignorer
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Environnements virtuels
+.venv/
+env/
+venv/
+
+# Fichiers de configuration sensibles
+*.env
+
+# Données lourdes
+*.csv
+*.zip
+*.txt
+*.tsv
+*.xls*
+*.parquet
+*.h5
+*.db
+
+# Checkpoints Jupyter
+.ipynb_checkpoints/
+
+# Fichiers de log
+*.log
+
+# VS Code
 .vscode/
