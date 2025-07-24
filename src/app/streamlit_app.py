@@ -26,8 +26,9 @@ COLS_NICE = {
     "income" : "Revenu médian € ", "unemployment": "Taux chômage % ",
     "poverty" : "Taux pauvreté % ", "type_local" : "Type logement",
     "code_postal" : "Code postal", "nature_mutation" : "Nature mutation",
-    "nature_mutation": "Nature mutation", "code_postal": "Code postal",
-    "type_local": "Type de bien", "poverty_rate": "Taux pauvreté %"
+    "nature_mutation": "Nature de la mutation", "code_postal": "Code postal",
+    "type_local": "Type de bien", "poverty_rate": "Taux pauvreté %",
+    "nombre_pieces_principales": "Nombres de pièces principales"
 }
 
 def pretty(df: pd.DataFrame) -> pd.DataFrame:
@@ -115,13 +116,13 @@ if view == "Standard":
 
         query = """
             SELECT *,
-                valeur_fonciere / surface_reelle_bati AS prix_m2,
-                substr(code_postal,1,2) AS dept
+                ROUND(valeur_fonciere / surface_reelle_bati, 0) AS prix_m2,     -- arrondi ici
+                substr(code_postal,1,2)                         AS dept
             FROM   transactions
             WHERE  date_mutation BETWEEN ? AND ?
-            AND  surface_reelle_bati > 0
-            AND  valeur_fonciere IS NOT NULL
-            AND  (valeur_fonciere / surface_reelle_bati) BETWEEN ? AND ?
+              AND  surface_reelle_bati > 0
+              AND  valeur_fonciere IS NOT NULL
+              AND  (valeur_fonciere / surface_reelle_bati) BETWEEN ? AND ?
         """
         params = [start_iso, end_iso, pmin, pmax]
 
@@ -129,21 +130,22 @@ if view == "Standard":
             query += " AND type_local = ?"
             params.append(type_sel)
 
-        data = pd.read_sql_query(
+        df = pd.read_sql_query(
             query, conn, params=params, parse_dates=["date_mutation"]
         )
 
-        # 🔧 normalise code_postal & dept  ──────────────────────────────
-        data["code_postal"] = (
-            data["code_postal"]
-               .astype(str)
-               .str.replace(r"\.0$", "", regex=True)
-               .str.zfill(5)
+        df["date_mutation"] = df["date_mutation"].dt.date              
+        df["valeur_fonciere"] = df["valeur_fonciere"].round(0).astype(int) 
+        df["prix_m2"] = df["prix_m2"].astype(int)                 
+        df["code_postal"] = (
+            df["code_postal"].astype(str)
+                               .str.replace(r"\.0$", "", regex=True)      
+                               .str.zfill(5)
         )
-        if "dept" not in data.columns:
-            data["dept"] = data["code_postal"].str[:2]
+        if "dept" not in df.columns:
+            df["dept"] = df["code_postal"].str[:2]
 
-        return data
+        return df
     
     tx = load_transactions(start_date, end_date, choix_type, price_range[0], price_range[1])
 
@@ -161,7 +163,22 @@ if view == "Standard":
     )
 
     st.subheader("Aperçu des transactions filtrées")
-    show(tx.drop(columns=["date_mutation"]), 10)
+    view_tx = (
+        tx.query("prix_m2.notna() and nombre_pieces_principales > 0")
+        .drop_duplicates(subset=["date_mutation", "valeur_fonciere", "surface_reelle_bati", "code_postal"], keep="first", ignore_index=True)
+        .sample(n=min(10, len(tx)), random_state=42)
+        .sort_values("valeur_fonciere", ascending=False)
+    )
+
+    if len(tx):
+        view_tx = (
+            tx.drop(columns=["date_mutation"])
+            .drop_duplicates(subset=["id", "valeur_fonciere", "surface_reelle_bati"])
+            .sample(n=min(10, len(tx)), random_state=42)
+        )
+        show(view_tx)
+    else:
+        st.info("Aucune transaction ne correspond aux filtres sélectionnés.")
 
     # --- Carte choroplèthe ---
     prix_dept = (
@@ -191,12 +208,15 @@ if view == "Standard":
 
     # --- Histogramme ---
     st.subheader("Distribution des prix au m²")
-    fig1, ax1 = plt.subplots()
-    ax1.hist(tx["prix_m2"], bins="auto", range=price_range, edgecolor="black")
-    ax1.set_xlim(price_range)             
-    ax1.set_xlabel("Prix (€ / m²)")
-    ax1.set_ylabel("Nombre de transactions")
-    st.pyplot(fig1, use_container_width=True)
+    if len(tx):
+        fig1, ax1 = plt.subplots()
+        ax1.hist(tx["prix_m2"], bins="auto", range=price_range, edgecolor="black")
+        ax1.set_xlim(price_range)
+        ax1.set_xlabel("Prix (€ / m²)")
+        ax1.set_ylabel("Nombre de transactions")
+        st.pyplot(fig1, use_container_width=True)
+    else:
+        st.info("Graphique non disponible : 0 transaction après filtres.")
 
     # --- Box-plot ---
     st.subheader("Dispersion prix/m² par type de bien")
