@@ -21,12 +21,13 @@ COLS_NICE = {
     "code": "Département", "dept": "Département", "code_region": "Région",
     "nb_transactions": "Nombres de transactions", "prix_m2_moyen": "Prix moyen €/m²",
     "prix_m2": "Prix €/m²", "surface_reelle_bati": "Surface bâtie m²",
-    "valeur_fonciere": "Valeur foncière €",
-    "population": "Population", "income_median": "Revenu médian €",
-    "taux_chomage": "Taux chômage %", "poverty_rate": "Taux pauvreté %",
-    "income"      : "Revenu médian € ",
-    "unemployment": "Taux chômage % ",
-    "poverty"     : "Taux pauvreté % "
+    "valeur_fonciere": "Valeur foncière €", "population": "Population",
+    "income_median": "Revenu médian €","taux_chomage": "Taux chômage %", 
+    "income" : "Revenu médian € ", "unemployment": "Taux chômage % ",
+    "poverty" : "Taux pauvreté % ", "type_local" : "Type logement",
+    "code_postal" : "Code postal", "nature_mutation" : "Nature mutation",
+    "nature_mutation": "Nature mutation", "code_postal": "Code postal",
+    "type_local": "Type de bien", "poverty_rate": "Taux pauvreté %"
 }
 
 def pretty(df: pd.DataFrame) -> pd.DataFrame:
@@ -75,11 +76,12 @@ if view == "Standard":
         max_value=max_date.date()
     )
     
-    if isinstance(raw_dates, tuple):
-        start_date = pd.to_datetime(raw_dates[0])
-        end_date   = pd.to_datetime(raw_dates[1] if len(raw_dates) > 1 else raw_dates[0])
-    else:  
-        start_date = end_date = pd.to_datetime(raw_dates)
+    if isinstance(raw_dates, tuple) and len(raw_dates) == 2:
+        start_date, end_date = map(pd.to_datetime, raw_dates)
+    else:
+        d = raw_dates[0] if isinstance(raw_dates, tuple) and raw_dates else raw_dates
+        start_date = end_date = pd.to_datetime(d)
+
 
     # --- Type de bien (liste depuis la base) ---
     type_list = ["Tous"] + [
@@ -123,19 +125,26 @@ if view == "Standard":
         """
         params = [start_iso, end_iso, pmin, pmax]
 
-        df["code_postal"] = df["code_postal"].astype(str).str.replace(r"\.0$", "", regex=True)
-
-        if "dept" not in df.columns:
-            df["dept"] = df["code_postal"].str[:2].str.zfill(2)
-
         if type_sel != "Tous":
             query += " AND type_local = ?"
             params.append(type_sel)
 
-        return pd.read_sql_query(
+        data = pd.read_sql_query(
             query, conn, params=params, parse_dates=["date_mutation"]
         )
 
+        # 🔧 normalise code_postal & dept  ──────────────────────────────
+        data["code_postal"] = (
+            data["code_postal"]
+               .astype(str)
+               .str.replace(r"\.0$", "", regex=True)
+               .str.zfill(5)
+        )
+        if "dept" not in data.columns:
+            data["dept"] = data["code_postal"].str[:2]
+
+        return data
+    
     tx = load_transactions(start_date, end_date, choix_type, price_range[0], price_range[1])
 
     # --- KPIs & export ---
@@ -196,6 +205,7 @@ if view == "Standard":
     ax_box.set_xlabel("")
     ax_box.set_ylabel("€ / m²")
     ax_box.set_title("")
+    fig_box.suptitle("")
     ax_box.tick_params(axis="x", labelrotation=45)
     ax_box.set_xticklabels(
         [lab.get_text().replace(" ", "\n", 1) for lab in ax_box.get_xticklabels()],
@@ -223,7 +233,7 @@ elif view == "Spark Analysis":
         "SELECT dept AS code, nb_transactions, prix_m2_moyen FROM spark_dept_analysis",
         conn
     )
-    df_spark["prix_m2_moyen"] = df_spark["prix_m2_moyen"].round(0).astype(int)
+    df_spark["prix_m2_moyen"] = df_spark["prix_m2_moyen"].round(0)
     st.subheader("Résultats Spark par département")
     show(df_spark)
     per_page = st.sidebar.slider("Dépts par page", 5, 50, 10, 5)
@@ -256,7 +266,9 @@ elif view == "Text Analysis":
     df_page = pd.DataFrame(subset)
     st.subheader(f"Commentaires (page {page})")
     show(df_page)
-    df_page['sentiment'] = df_page['commentaire'].map(lambda t: TextBlob(t).sentiment.polarity)
+    df_page["sentiment"] = df_page["commentaire"].map(
+    lambda t: float(TextBlob(t).sentiment.polarity)   # type: ignore[attr-defined]
+    )
     st.subheader("Sentiment des avis")
     st.bar_chart(df_page['sentiment'])
     sample_n = st.sidebar.slider("Échantillon Word Cloud", 100, 5000, 1000, 100)
@@ -318,12 +330,6 @@ elif view == "Indicateurs Socio-éco":
     df_pop  = load_df(population_path)
     df_pov  = load_df(poverty_path)
     geo     = load_geo(geojson_path)
-
-    # Conversion numérique
-    df_chom["taux_chomage"] = pd.to_numeric(df_chom["taux_chomage"].str.replace(",","."), errors="coerce")
-    df_inc["income_median"]   = pd.to_numeric(df_inc["income_median"].str.replace(",","."), errors="coerce")
-    df_pop["population"]      = pd.to_numeric(df_pop["population"].str.replace(" ",""), errors="coerce")
-    df_pov["poverty_rate"]    = pd.to_numeric(df_pov["poverty_rate"].str.replace(",","."), errors="coerce")
 
     # Filtre chômage
     df_chom = df_chom.query("@min_c <= taux_chomage <= @max_c")
