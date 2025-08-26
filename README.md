@@ -1,202 +1,53 @@
-Homepedia — Dashboard Immobilier & Socio‑économique 🇫🇷
+# Homepedia — Dashboard Immobilier & Socio-économique 🇫🇷
 
-Version : juillet 2025 — documentation finale
+En une phrase. Homepedia transforme des données publiques (DVF + INSEE) en indicateurs lisibles et cartes interactives pour comprendre le marché immobilier français, par département.
 
-1. Contexte & objectifs
+# 1) À quoi ça sert
 
-Homepedia est une application interactive (Streamlit + Docker) permettant :
+Visualiser le prix moyen au m² par département et par type de bien.
 
-d’explorer 2 M+ transactions DVF 2024 ;
+Croiser le marché avec des indicateurs socio-éco : revenu médian, chômage, pauvreté, population.
 
-de les croiser avec des indicateurs INSEE (revenu médian, chômage, pauvreté, population) ;
+Filtrer (départements, type de bien, bornes de prix/surface, période) et exporter les résultats.
 
-de fournir un jeu de visualisations et d’insights simples pour les décideurs publics & privés.
+# 2) Données utilisées
 
-2. Stack & architecture
+DVF 2024 (~2 M de transactions).
 
-CSV / Scraping  →  Scripts ETL (Python)  →  SQLite (homepedia.db)
-                           │
-                           └───►  Streamlit 5 vues  →  Docker
+INSEE : FILOSOFI (revenu médian 2021), Chômage T1 2025, Pauvreté 2021, Population 2024.
 
-Backend ETL : Python 3.11, pandas, PySpark, GeoPandas, SQLAlchemy.
+# 3) Principales métriques
 
-BDD : SQLite (léger, portable, parfait pour dockeriser l’app).
+Prix moyen €/m², distributions (histogrammes, box-plots).
 
-Frontend : Streamlit + Folium + Matplotlib/Seaborn.
+Corrélations entre revenu, chômage, pauvreté et prix.
 
-Tests : pytest (12 tests d’ingestion).
+Cartes choroplèthes au niveau départemental.
 
-CI : optionnel (GitHub Actions) — voir dossier .github/workflows.
+# 4) Pile technique
 
-3. Pré‑processing des données
+ETL : Python 3.11 (pandas, PySpark pour les agrégations massives, GeoPandas, SQLAlchemy).
 
-Source
+Base : SQLite (db/homepedia.db) — légère, portable, prête pour Docker.
 
-Script
+App : Streamlit + Folium/Matplotlib pour les visualisations.
 
-Nettoyage / Transfo clés
+Qualité : tests pytest (ingestion/transformations).
 
-Gain apporté
+# 5) Architecture (simplifiée)
 
-DVF 2024 (≈ 4 Go)
+Ingestion & nettoyage des CSV (DVF + INSEE) → calcul de price_m2, normalisation des codes départements.
 
-ingest_valeursfoncieres.py
+Chargement des tables indicateurs + transactions dans SQLite avec index (dept, price_m2, date_mutation).
 
-conversion valeur_fonciere → float, suppression surfaces 0, extraction code dept depuis CP
+Interface Streamlit qui lit homepedia.db et expose cartes + graphiques + filtres.
 
-calcul fiable prix €/m², jointure rapide dept
-
-Revenu médian
-
-ingest_insee_income.py
-
-filtrage MED_SL, EUR_YR, an 2021, gestion Corse/DOM‑TOM, médiane dept
-
-comparabilité pouvoir d’achat
-
-Taux chômage T1 2025
-
-ingest_insee_unemployment.py
-
-conversion ,→. float, agrégation dept
-
-variable marché du travail
-
-Pauvreté 2021
-
-ingest_insee_poverty.py
-
-nettoyage %, agrégation dept
-
-vulnérabilité socio‑éco
-
-Population 2024
-
-ingest_insee_population.py
-
-suppression espaces milliers, cast int
-
-taille de marché
-
-Pipeline assuré : exécution séquentielle des scripts → BDD prête → lancement Streamlit.
-
-4. Schéma BDD & justification stockage
-
-
-
-Transactions : clé primaire auto‑inc. id + code département dérivé.
-
-Tables indicateurs (population, poverty, income, unemployment) : clé code (varchar 2‑3).
-
-Indexes créés sur transactions.dept, price_m2, dates.
-
-Pourquoi SQLite ? léger, sans serveur, parfait pour Docker ; volume < 300 Mo compressé.
-
-5. Métriques choisies & justification
-
-Métrique
-
-Raison d’être
-
-Source
-
-Prix moyen €/m²
-
-Indicateur clé du marché immobilier
-
-DVF 2024
-
-Revenu médian (€ / an)
-
-Pouvoir d’achat local, corrélé aux prix
-
-FILOSOFI 2021
-
-Taux de chômage %
-
-Mesure dynamique emploi → demande logement
-
-INSEE Chômage T1 2025
-
-Taux de pauvreté %
-
-Vulnérabilité socio‑éco & tension logement
-
-INSEE Pauvreté 2021
-
-Population (hab.)
-
-Taille de marché et densité
-
-INSEE Pop 2024
-
-6. Librairies data‑science mises en œuvre
-
-pandas : manipulation tabulaire (merge, groupby, to_sql).
-
-GeoPandas : jointure GeoJSON + indicateurs → cartes choroplèthes.
-
-Matplotlib / Seaborn : histogrammes, box‑plots, scatter, heatmaps.
-
-PySpark : agrégations rapides sur le CSV DVF brut (≈ 2 M lignes).
-
-Folium : rendu cartographie interactive dans Streamlit.
-
-7. Visualisations clés (≥ 3 affichages distincts)
-
-Vue Streamlit
-
-Visualisation
-
-Insight rapide
-
-Standard
-
-Carte choroplèthe prix/m² dept
-
-Hot‑spots nationaux ↔ littoral & IDF
-
-Standard
-
-Histogramme prix/m² filtrable
-
-queue longue → valeurs extrêmes
-
-Standard
-
-Box‑plot prix/m² ↔ type_local
-
-appartements + chers/m²
-
-Socio‑éco
-
-Scatter Revenu ↔ Chômage
-
-pente négative R² 0.4
-
-Région
-
-Heatmap corrélation multivariée
-
-corrélation négative Revenu ↔ Pauvreté
-
-8. Contraintes sujet : conformité
-
-Aucune donnée manuelle : tout provient de scripts ETL automatisés.
-
-Docker‑ready : docker-compose up -d lance ETL + Streamlit.
-
-Tests unitaires : pytest -q → 12 tests OK.
-
-Performances : index SQL + agrégations PySpark (<15 s build table).
-
-9. Exécution rapide
-
-# 1) Pré‑requis
-python -m venv .venv && .\.venv\Scripts\activate
+# 6) Lancer le projet (local)
+python -m venv .venv
+Windows: .venv\Scripts\activate   |   Linux/Mac: source .venv/bin/activate
 pip install -r requirements.txt
 
-# 2) Lancer pipeline ETL (≈ 2‑3 min)
+# ETL (≈2–3 min selon machine)
 python src/backend/ingest_valeursfoncieres.py
 python src/backend/ingest_insee_population.py
 python src/backend/ingest_insee_poverty.py
@@ -204,20 +55,7 @@ python src/backend/ingest_insee_unemployment.py
 python src/backend/ingest_insee_income.py
 python src/backend/spark_dvf_analysis.py
 
-# 3) Frontend
-streamlit run src/app/streamlit_app.py
-Alternativement : docker compose up --build
-
-10. Roadmap post‑soutenance
-
-Ajout indicateurs démographie/âge moyen (INSEE).
-
-Tests UI Streamlit avec Playwright.
-
-CI GitHub Actions (lint + pytest + build Docker).
-
-Déploiement public (Railway / Render) avec SQLite montée en readonly.
-
-11. Auteur
-
-Adrien TROISE — Epitech Nice (Architecte logiciel) 2023‑2025
+# UI
+streamlit run src/app/streamlit_app.py   
+http://localhost:8501
+Option : docker compose up --build si tu utilises Docker.
