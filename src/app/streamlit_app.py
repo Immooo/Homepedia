@@ -17,6 +17,8 @@ from typing import Any, List
 import matplotlib.ticker as mticker
 import seaborn as sns
 
+DB_PATH = os.getenv("DB_PATH", "data/homepedia.db")
+
 COLS_NICE = {
     "code": "Département", "dept": "Département", "code_region": "Région",
     "nb_transactions": "Nombres de transactions", "prix_m2_moyen": "Prix moyen €/m²",
