@@ -1,26 +1,51 @@
-version: "3.8"
+version: "3.9"
+
+x-env: &default-env
+  STREAMLIT_SERVER_PORT: ${STREAMLIT_SERVER_PORT:-8501}
+  DB_PATH: ${DB_PATH:-/data/homepedia.db}
+  PYTHONUNBUFFERED: "1"
 
 services:
-  homepedia:
+  app:
     build:
       context: ..
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile   
     image: homepedia-app:latest
     container_name: homepedia-app
-    volumes:
-      - ../data:/app/data
-      - ~/.cache/pip:/root/.cache/pip
-      - ../src:/app/src
-      - ./data:/home/app/data
-      command: >
-      bash -c "python src/backend/scraper_listings.py && streamlit run src/app/streamlit_app.py"
-    ports:
-      - "8501:8501"
+    env_file:
+      - ../.env
     environment:
-      - STREAMLIT_SERVER_HEADLESS=true
+      <<: *default-env
+      STREAMLIT_SERVER_HEADLESS: "true"
+    volumes:
+      - ../data:/app/data:rw          # persistance data (lié à DB_PATH)
+      - ../src:/app/src:rw            # hot-reload code
+      - ../outputs:/app/outputs:rw
+    working_dir: /app
+    command: >
+      bash -lc "streamlit run src/app/streamlit_app.py --server.address=0.0.0.0 --server.port=${STREAMLIT_SERVER_PORT:-8501}"
+    ports:
+      - "${STREAMLIT_SERVER_PORT:-8501}:8501"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8501 || exit 1"]
-      interval: 30s
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8501/_stcore/health || exit 1"]
+      interval: 15s
       timeout: 5s
-      retries: 3
+      retries: 10
+
+  metabase:
+    image: metabase/metabase:latest
+    container_name: homepedia-metabase
+    ports:
+      - "3000:3000"
+    environment:
+      MB_DB_FILE: /metabase-data/metabase.db
+    volumes:
+      - metabase-data:/metabase-data
+      - ../data:/data:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  metabase-data:
