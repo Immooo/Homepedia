@@ -1,21 +1,35 @@
-# Fichiers/dossiers spécifiques à ignorer
+# ===============================
+# PYTHON
+# ===============================
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
 *.so
 *.egg
 *.egg-info/
 dist/
 build/
 
-# Environnements virtuels
+# ===============================
+# ENVIRONNEMENTS VIRTUELS
+# ===============================
 .venv/
 env/
 venv/
+.env
+.env.*
 
-# Fichiers de configuration sensibles
+# ===============================
+# FICHIERS DE CONFIGURATION SENSIBLES
+# ===============================
 *.env
+.streamlit/secrets.toml
+kaggle.json
 
-# Données lourdes
+# ===============================
+# DONNÉES / SORTIES
+# ===============================
 *.csv
 *.zip
 *.txt
@@ -24,47 +38,27 @@ venv/
 *.parquet
 *.h5
 *.db
+*.sqlite3
+data/homepedia.db
+data/processed/*
+outputs/*
+!outputs/.gitkeep
 
-# Checkpoints Jupyter
+# ===============================
+# NOTEBOOKS JUPYTER
+# ===============================
 .ipynb_checkpoints/
+*.ipynb_checkpoints
 
-# Fichiers de log
+# ===============================
+# LOGS
+# ===============================
 *.log
+logs/
 
-# VS Code
-.vscode/# Fichiers/dossiers spécifiques à ignorer
-__pycache__/
-*.py[cod]
-*.so
-*.egg
-*.egg-info/
-dist/
-build/
-
-# Environnements virtuels
-.venv/
-env/
-venv/
-
-# Fichiers de configuration sensibles
-*.env
-
-# Données lourdes
-*.csv
-*.zip
-*.txt
-*.tsv
-*.xls*
-*.parquet
-*.h5
-*.db
-
-# Checkpoints Jupyter
-.ipynb_checkpoints/
-
-# Fichiers de log
-*.log
-
-# VS Code
+# ===============================
+# ÉDITEURS / OS
+# ===============================
 .vscode/
-kaggle.json 
+.DS_Store
+Thumbs.db
