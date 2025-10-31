@@ -44,11 +44,14 @@ COLS_NICE = {
     "nombre_pieces_principales": "Nombres de pièces principales",
 }
 
+
 def pretty(df: pd.DataFrame) -> pd.DataFrame:
     return df.rename(columns={k: v for k, v in COLS_NICE.items() if k in df.columns})
 
+
 def show(df: pd.DataFrame, n: int | None = None):
     st.dataframe(pretty(df if n is None else df.head(n)), use_container_width=True)
+
 
 # -----------------------------
 # Connexion SQLite persistante
@@ -58,6 +61,7 @@ def get_conn() -> sqlite3.Connection:
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     return sqlite3.connect(DB_PATH, check_same_thread=False)
 
+
 conn = get_conn()
 
 # -----------------------------
@@ -65,7 +69,14 @@ conn = get_conn()
 # -----------------------------
 view = st.sidebar.radio(
     "Choix de la vue",
-    ["Standard", "Spark Analysis", "Text Analysis", "Indicateurs Socio-éco", "Région", "Méthodologie"],
+    [
+        "Standard",
+        "Spark Analysis",
+        "Text Analysis",
+        "Indicateurs Socio-éco",
+        "Région",
+        "Méthodologie",
+    ],
 )
 
 # -----------------------------
@@ -159,7 +170,9 @@ if view == "Standard":
     # KPIs & export
     c1, c2, c3 = st.columns(3)
     c1.metric("Transactions chargées", f"{len(tx):,}")
-    c2.metric("Surface médiane (m²)", f"{tx['surface_reelle_bati'].median():.1f}" if len(tx) else "—")
+    c2.metric(
+        "Surface médiane (m²)", f"{tx['surface_reelle_bati'].median():.1f}" if len(tx) else "—"
+    )
     c3.metric("Prix moyen €/m²", f"{tx['prix_m2'].mean():.2f}" if len(tx) else "—")
 
     st.download_button(
@@ -173,7 +186,9 @@ if view == "Standard":
     st.subheader("Aperçu des transactions filtrées")
     if len(tx):
         view_tx = (
-            tx.drop_duplicates(subset=["id", "valeur_fonciere", "surface_reelle_bati"], keep="first")
+            tx.drop_duplicates(
+                subset=["id", "valeur_fonciere", "surface_reelle_bati"], keep="first"
+            )
             .sample(n=min(10, len(tx)), random_state=42)
             .sort_values("valeur_fonciere", ascending=False)
         )
@@ -317,7 +332,9 @@ elif view == "Text Analysis":
         )
         st.subheader("Sentiment des avis")
         st.bar_chart(df_page["sentiment"])
-        sample_n = st.sidebar.slider("Échantillon Word Cloud", 100, min(5000, len(docs)), min(1000, len(docs)), 100)
+        sample_n = st.sidebar.slider(
+            "Échantillon Word Cloud", 100, min(5000, len(docs)), min(1000, len(docs)), 100
+        )
         sampled = random.sample(docs, min(sample_n, len(docs)))
         text = " ".join(d.get("commentaire", "") for d in sampled)
         wc = WordCloud(width=800, height=400, background_color="white").generate(text)
@@ -376,7 +393,14 @@ elif view == "Indicateurs Socio-éco":
     df_chom = df_chom.query("@min_c <= taux_chomage <= @max_c")
 
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
-        ["Chômage", "Revenu médian", "Population", "Pauvreté", "Corrélation", "Matrice corrélations"]
+        [
+            "Chômage",
+            "Revenu médian",
+            "Population",
+            "Pauvreté",
+            "Corrélation",
+            "Matrice corrélations",
+        ]
     )
 
     # Chômage
@@ -386,7 +410,11 @@ elif view == "Indicateurs Socio-éco":
         geo1 = geo.merge(df_chom, on="code", how="left")
         m1 = folium.Map(location=[46.6, 2.4], zoom_start=5)
         folium.Choropleth(
-            geo_data=geo1, data=geo1, columns=["code", "taux_chomage"], key_on="feature.properties.code", legend_name="Taux de chômage (%)"
+            geo_data=geo1,
+            data=geo1,
+            columns=["code", "taux_chomage"],
+            key_on="feature.properties.code",
+            legend_name="Taux de chômage (%)",
         ).add_to(m1)
         st_folium(m1, width=800, height=600)
 
@@ -397,7 +425,11 @@ elif view == "Indicateurs Socio-éco":
         geo2 = geo.merge(df_inc, on="code", how="left")
         m2 = folium.Map(location=[46.6, 2.4], zoom_start=5)
         folium.Choropleth(
-            geo_data=geo2, data=geo2, columns=["code", "income_median"], key_on="feature.properties.code", legend_name="Revenu médian (€ / an)"
+            geo_data=geo2,
+            data=geo2,
+            columns=["code", "income_median"],
+            key_on="feature.properties.code",
+            legend_name="Revenu médian (€ / an)",
         ).add_to(m2)
         st_folium(m2, width=800, height=600)
 
@@ -408,7 +440,11 @@ elif view == "Indicateurs Socio-éco":
         geo3 = geo.merge(df_pop, on="code", how="left")
         m3 = folium.Map(location=[46.6, 2.4], zoom_start=5)
         folium.Choropleth(
-            geo_data=geo3, data=geo3, columns=["code", "population"], key_on="feature.properties.code", legend_name="Population"
+            geo_data=geo3,
+            data=geo3,
+            columns=["code", "population"],
+            key_on="feature.properties.code",
+            legend_name="Population",
         ).add_to(m3)
         st_folium(m3, width=800, height=600)
         fig3, ax3 = plt.subplots()
@@ -425,7 +461,11 @@ elif view == "Indicateurs Socio-éco":
         geo4 = geo.merge(df_pov, on="code", how="left")
         m4 = folium.Map(location=[46.6, 2.4], zoom_start=5)
         folium.Choropleth(
-            geo_data=geo4, data=geo4, columns=["code", "poverty_rate"], key_on="feature.properties.code", legend_name="Taux de pauvreté (%)"
+            geo_data=geo4,
+            data=geo4,
+            columns=["code", "poverty_rate"],
+            key_on="feature.properties.code",
+            legend_name="Taux de pauvreté (%)",
         ).add_to(m4)
         st_folium(m4, width=800, height=600)
         fig4, ax4 = plt.subplots()
@@ -441,7 +481,9 @@ elif view == "Indicateurs Socio-éco":
         if not df_corr.empty:
             fig5, ax5 = plt.subplots()
             ax5.scatter(df_corr["income_median"], df_corr["taux_chomage"], alpha=0.7)
-            slope, intercept, r, p, se = linregress(df_corr["income_median"], df_corr["taux_chomage"])
+            slope, intercept, r, p, se = linregress(
+                df_corr["income_median"], df_corr["taux_chomage"]
+            )
             xx = np.linspace(df_corr["income_median"].min(), df_corr["income_median"].max(), 100)
             ax5.plot(xx, intercept + slope * xx, linestyle="--", label=f"R²={r**2:.2f}")
             ax5.set_xlabel("Revenu médian (€ / an)")
@@ -459,7 +501,11 @@ elif view == "Indicateurs Socio-éco":
             .merge(df_pop, on="code", how="inner")
             .merge(df_pov, on="code", how="inner")
         )
-        cols = [c for c in ["taux_chomage", "income_median", "population", "poverty_rate"] if c in df_all.columns]
+        cols = [
+            c
+            for c in ["taux_chomage", "income_median", "population", "poverty_rate"]
+            if c in df_all.columns
+        ]
         if len(cols) > 1:
             corr = df_all[cols].corr()
             fig, ax = plt.subplots()
@@ -514,10 +560,17 @@ elif view == "Région":
     borne_max = ((max(pop_max, 1) // 2_000_000) + 1) * 2_000_000
     st.sidebar.subheader("Plage de population (pas 2 M)")
     x_range = st.sidebar.slider(
-        "Population", min_value=borne_min, max_value=borne_max, value=(borne_min, borne_max), step=2_000_000, format="%d"
+        "Population",
+        min_value=borne_min,
+        max_value=borne_max,
+        value=(borne_min, borne_max),
+        step=2_000_000,
+        format="%d",
     )
 
-    geo_plot = geo_reg.merge(df_region.rename(columns={"code_region": "code"}), on="code", how="left")
+    geo_plot = geo_reg.merge(
+        df_region.rename(columns={"code_region": "code"}), on="code", how="left"
+    )
     m_reg = folium.Map(location=[46.6, 2.4], zoom_start=5)
     folium.Choropleth(
         geo_data=geo_plot,
@@ -566,7 +619,14 @@ elif view == "Région":
         for i in range(len(corr)):
             for j in range(len(corr)):
                 val = corr.iat[i, j]
-                ax.text(j, i, f"{val:.2f}", ha="center", va="center", color=("white" if abs(val) > 0.5 else "black"))
+                ax.text(
+                    j,
+                    i,
+                    f"{val:.2f}",
+                    ha="center",
+                    va="center",
+                    color=("white" if abs(val) > 0.5 else "black"),
+                )
         fig.colorbar(cax, ax=ax, fraction=0.046, pad=0.04)
         st.pyplot(fig)
     else:
@@ -603,4 +663,4 @@ CSV / Scraping → ETL scripts → SQLite (homepedia.db)
 - Tests d’ingestion plus complets
 - Authentification Streamlit si déploiement public
         """
-)
+    )

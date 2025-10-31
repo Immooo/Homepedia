@@ -1,24 +1,29 @@
 import os
 import pandas as pd
 
+from backend.logging_setup import setup_logging
+logger = setup_logging()
+
+
 def main():
-    RAW  = os.path.join("data", "raw", "comments", "Hotel_Reviews.csv")
-    OUT  = os.path.join("data", "processed", "comments.csv")
+    RAW = os.path.join("data", "raw", "comments", "Hotel_Reviews.csv")
+    OUT = os.path.join("data", "processed", "comments.csv")
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
 
-    print(f"Lecture brut commentaires : {RAW}")
+    logger.info("Lecture brut commentaires : %s", RAW)
     # On charge les colonnes neg et pos
     df = pd.read_csv(
         RAW,
         usecols=["Negative_Review", "Positive_Review"],
         encoding="latin1",
-        low_memory=False
+        low_memory=False,
     )
 
     # Concaténer positif + négatif
     df["commentaire"] = (
-        df["Positive_Review"].fillna("").str.strip() + " " +
-        df["Negative_Review"].fillna("").str.strip()
+        df["Positive_Review"].fillna("").str.strip()
+        + " "
+        + df["Negative_Review"].fillna("").str.strip()
     )
 
     # Filtrer lignes vides
@@ -27,11 +32,12 @@ def main():
     # Conserver seulement la colonne de commentaire
     df = df[["commentaire"]]
 
-    print(f"Nombre de commentaires à ingérer : {len(df)}")
+    logger.info("Nombre de commentaires à ingérer : %d", len(df))
 
     # Écriture du CSV traité
     df.to_csv(OUT, index=False, encoding="utf-8")
-    print(f"Ingestion commentaires OK → {OUT}")
+    logger.info("Ingestion commentaires OK → %s", OUT)
+
 
 if __name__ == "__main__":
     main()

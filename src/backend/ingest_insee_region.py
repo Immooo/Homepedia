@@ -1,3 +1,4 @@
+# File: src/backend/ingest_insee_region.py
 from __future__ import annotations
 
 import sqlite3
@@ -7,6 +8,9 @@ from typing import Tuple
 
 import pandas as pd
 from pynsee.localdata import get_local_metadata, get_local_data
+
+from backend.logging_setup import setup_logging
+logger = setup_logging()
 
 # Base SQLite : data/homepedia.db à la racine du repo
 DB = Path(__file__).resolve().parents[2] / "data" / "homepedia.db"
@@ -32,13 +36,9 @@ def latest_dataset(keyword: str) -> Tuple[str, str]:
     )
 
     # Filtre niveau régional
-    sub = meta[
-        mask_title & meta["geography"].str.contains("region", case=False, na=False)
-    ]
+    sub = meta[mask_title & meta["geography"].str.contains("region", case=False, na=False)]
     if sub.empty:
-        raise ValueError(
-            f"Pas de dataset contenant « {keyword} » au niveau régional."
-        )
+        raise ValueError(f"Pas de dataset contenant « {keyword} » au niveau régional.")
 
     # colonnes id/version (certains champs sont nommés datasetId/datasetVersion)
     ds_id_col = [c for c in meta.columns if "datasetid" in c][0]
@@ -48,8 +48,8 @@ def latest_dataset(keyword: str) -> Tuple[str, str]:
     ds_ver = str(sub[ds_ver_col].max())
 
     # 👉 Si tu veux logguer ici les colonnes ou un preview, fais-le ici
-    # print(meta.columns.tolist())
-    # print(sub.head(3))
+    # logger.debug(meta.columns.tolist())
+    # logger.debug(sub.head(3).to_dict(orient="list"))
 
     return ds_id, ds_ver
 
@@ -59,6 +59,7 @@ def fetch(keyword: str, new_col: str) -> pd.DataFrame:
     Récupère un dataset régional par mot-clé et renomme la valeur observée.
     """
     ds_id, ds_ver = latest_dataset(keyword)
+    logger.info("Récupération dataset '%s' (version %s) pour '%s'", ds_id, ds_ver, keyword)
     df = get_local_data(ds_id, ds_ver)
     df.columns = df.columns.str.lower()
 
@@ -90,7 +91,7 @@ def main() -> None:
     with sqlite3.connect(DB) as conn:
         df.to_sql("region_indicators", conn, if_exists="replace", index=False)
 
-    print(f"✅ {len(df)} lignes insérées dans region_indicators (DB: {DB})")
+    logger.info("✅ %d lignes insérées dans region_indicators (DB: %s)", len(df), DB)
 
 
 if __name__ == "__main__":

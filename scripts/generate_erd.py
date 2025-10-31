@@ -3,6 +3,7 @@ from sqlalchemy import create_engine, MetaData
 
 DB_FILE = os.path.join("data", "homepedia.db")
 
+
 def main() -> None:
     engine = create_engine(f"sqlite:///{DB_FILE}")
     metadata = MetaData()
@@ -35,6 +36,7 @@ def main() -> None:
         f.write("\n".join(lines))
 
     print(f"✅ Fichier DOT généré : {dot_path}")
+
 
 if __name__ == "__main__":
     main()

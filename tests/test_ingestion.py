@@ -6,22 +6,26 @@ import pytest
 DB_FILE = os.path.join("data", "homepedia.db")
 PROCESSED_DIR = os.path.join("data", "processed")
 
+
 # --- Helpers ------------------------------------------------------------
 def csv_exists(name: str) -> str:
     path = os.path.join(PROCESSED_DIR, name)
     assert os.path.exists(path), f"{path} manquant"
     return path
 
+
 def table_rowcount(conn, table: str) -> int:
     return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 
+
 # --- Paramétrage des jeux de données -------------------------------------
 CSV_TABLES = [
-    ("population_dept.csv",   "population"),
-    ("poverty_dept.csv",      "poverty"),
+    ("population_dept.csv", "population"),
+    ("poverty_dept.csv", "poverty"),
     ("unemployment_dept.csv", "unemployment"),
-    ("income_dept.csv",       "income"),
+    ("income_dept.csv", "income"),
 ]
+
 
 # -------------------------------------------------------------------------
 @pytest.mark.parametrize("csv_name,table", CSV_TABLES)
@@ -30,6 +34,7 @@ def test_csv_present(csv_name, table):
     path = csv_exists(csv_name)
     df = pd.read_csv(path, dtype=str, encoding="utf-8-sig")
     assert not df.empty, f"{csv_name} est vide"
+
 
 @pytest.mark.parametrize("csv_name,table", CSV_TABLES)
 def test_sqlite_table_created(csv_name, table):
@@ -42,6 +47,7 @@ def test_sqlite_table_created(csv_name, table):
     finally:
         conn.close()
     assert n >= 95, f"{table} ne contient que {n} lignes (<95)"
+
 
 @pytest.mark.parametrize("csv_name,table", CSV_TABLES)
 def test_no_null_values(csv_name, table):
