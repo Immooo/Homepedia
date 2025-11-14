@@ -1,10 +1,12 @@
 # File: src/backend/ingest_insee_poverty.py
 
 import os
-import pandas as pd
 import sqlite3
 
+import pandas as pd
+
 from backend.logging_setup import setup_logging
+
 logger = setup_logging()
 
 
@@ -21,15 +23,21 @@ def main():
 
     # 3. Sélection et renommage
     logger.info("Sélection des colonnes CODGEO et TP6021 (taux de pauvreté)")
-    df = df[["CODGEO", "TP6021"]].rename(columns={"CODGEO": "geo", "TP6021": "poverty_rate"})
+    df = df[["CODGEO", "TP6021"]].rename(
+        columns={"CODGEO": "geo", "TP6021": "poverty_rate"}
+    )
 
     # 4. Extraction du code département
     logger.info("Extraction du code département à partir de la colonne GEO")
     df["code"] = df["geo"].str[:2]
 
     # 5. Conversion en float + suppression des non numériques
-    logger.info("Conversion du taux de pauvreté en float et suppression des valeurs non numériques")
-    df["poverty_rate"] = df["poverty_rate"].str.replace(",", ".").pipe(pd.to_numeric, errors="coerce")
+    logger.info(
+        "Conversion du taux de pauvreté en float et suppression des valeurs non numériques"
+    )
+    df["poverty_rate"] = (
+        df["poverty_rate"].str.replace(",", ".").pipe(pd.to_numeric, errors="coerce")
+    )
     df = df.dropna(subset=["poverty_rate"])
 
     # 6. Agrégation par département (médiane)

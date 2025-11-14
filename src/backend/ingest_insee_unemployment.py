@@ -1,8 +1,10 @@
 import os
-import pandas as pd
 import sqlite3
 
+import pandas as pd
+
 from backend.logging_setup import setup_logging
+
 logger = setup_logging()
 
 
@@ -26,11 +28,17 @@ def main():
     expected_cols = {"Code", "Libellé", "T1_2025"}
     if not expected_cols.issubset(set(df.columns)):
         missing = expected_cols - set(df.columns)
-        logger.error("Colonnes attendues non trouvées: %s. Colonnes présentes: %s", missing, list(df.columns))
+        logger.error(
+            "Colonnes attendues non trouvées: %s. Colonnes présentes: %s",
+            missing,
+            list(df.columns),
+        )
         raise ValueError("Colonnes attendues non trouvées !")
 
     df = df[["Code", "Libellé", "T1_2025"]].copy()
-    df = df.rename(columns={"Code": "code", "Libellé": "libelle", "T1_2025": "taux_chomage"})
+    df = df.rename(
+        columns={"Code": "code", "Libellé": "libelle", "T1_2025": "taux_chomage"}
+    )
 
     # Sécurise le type (au cas où)
     df["taux_chomage"] = pd.to_numeric(df["taux_chomage"], errors="coerce")

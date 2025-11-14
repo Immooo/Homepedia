@@ -1,7 +1,9 @@
 import os
+
 import pandas as pd
 
 from backend.logging_setup import setup_logging
+
 logger = setup_logging()
 
 
@@ -51,7 +53,9 @@ def main():
     # 6. Filtrer et nettoyer
     logger.info("Filtrage et nettoyage des données DVF 2024")
     df = df[TARGET_COLS]
-    df["date_mutation"] = pd.to_datetime(df["date_mutation"], dayfirst=True, errors="coerce")
+    df["date_mutation"] = pd.to_datetime(
+        df["date_mutation"], dayfirst=True, errors="coerce"
+    )
     df = df.drop_duplicates()
     df = df.dropna(subset=["date_mutation", "valeur_fonciere", "code_postal"])
 

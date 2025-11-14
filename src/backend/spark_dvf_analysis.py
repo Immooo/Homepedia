@@ -1,10 +1,12 @@
 import os
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, regexp_replace, substring, avg, count
-from pyspark.sql.types import DoubleType
 import sqlite3
 
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import avg, col, count, regexp_replace, substring
+from pyspark.sql.types import DoubleType
+
 from backend.logging_setup import setup_logging
+
 logger = setup_logging()
 
 # 1. Créer la session Spark
@@ -21,10 +23,14 @@ logger.info("Lecture du CSV dans Spark DataFrame")
 df = spark.read.csv(CSV_PATH, header=True, sep=",", inferSchema=False)
 
 # 4. Nettoyer et caster
-logger.info("Nettoyage et typage des colonnes (valeur_fonciere, surface_reelle_bati, prix_m2, dept)")
+logger.info(
+    "Nettoyage et typage des colonnes (valeur_fonciere, surface_reelle_bati, prix_m2, dept)"
+)
 df = df.withColumn(
     "valeur_fonciere_num",
-    regexp_replace(regexp_replace(col("valeur_fonciere"), " ", ""), ",", ".").cast(DoubleType()),
+    regexp_replace(regexp_replace(col("valeur_fonciere"), " ", ""), ",", ".").cast(
+        DoubleType()
+    ),
 )
 df = df.withColumn("surf_bati_num", col("surface_reelle_bati").cast(DoubleType()))
 df = df.filter(col("surf_bati_num") > 0)
@@ -48,7 +54,9 @@ conn = sqlite3.connect(DB_PATH)
 pdf.to_sql("spark_dept_analysis", conn, if_exists="replace", index=False)
 conn.close()
 
-logger.info("✅ Spark analysis terminée et résultats écrits dans la table 'spark_dept_analysis' de SQLite.")
+logger.info(
+    "✅ Spark analysis terminée et résultats écrits dans la table 'spark_dept_analysis' de SQLite."
+)
 
 spark.stop()
 logger.info("Session Spark arrêtée proprement")

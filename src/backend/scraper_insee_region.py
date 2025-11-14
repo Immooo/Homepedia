@@ -1,13 +1,15 @@
 import re
-import unicodedata
 import sqlite3
-import requests
-import pandas as pd
+import unicodedata
+from datetime import datetime
 from io import StringIO
 from pathlib import Path
-from datetime import datetime
+
+import pandas as pd
+import requests
 
 from backend.logging_setup import setup_logging
+
 logger = setup_logging()
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
@@ -73,7 +75,11 @@ def fetch_rev_pov(pop: pd.DataFrame) -> pd.DataFrame:
 
 def fetch_unemployment(pop: pd.DataFrame) -> pd.DataFrame:
     logger.info("Extraction chômage depuis %s", URL_CHOM)
-    tbl = next(t for t in _read_tables(URL_CHOM) if "trim. 2025" in " ".join(map(str, t.columns)))
+    tbl = next(
+        t
+        for t in _read_tables(URL_CHOM)
+        if "trim. 2025" in " ".join(map(str, t.columns))
+    )
     df = tbl.iloc[:, :4]  # Région | T1-2025 | … | …
     df.columns = ["region", "taux_chomage", "_", "__"]
     df["slug"] = df["region"].map(_slug)

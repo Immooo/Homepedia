@@ -1,9 +1,11 @@
 import os
 import sqlite3
-import pandas as pd
+
 import matplotlib.pyplot as plt
+import pandas as pd
 
 from backend.logging_setup import setup_logging
+
 logger = setup_logging()
 
 # 1. Connexion à la base SQLite
@@ -32,7 +34,9 @@ df["dept"] = df["code_postal"].astype(str).str[:2]
 logger.info("=== Aperçu des données ===\n%s", df.head(5))
 logger.info(
     "=== Statistiques numériques ===\n%s",
-    df[["valeur_fonciere_num", "surface_reelle_bati", "nombre_pieces_principales"]].describe()
+    df[
+        ["valeur_fonciere_num", "surface_reelle_bati", "nombre_pieces_principales"]
+    ].describe(),
 )
 
 # 5. Nombre de transactions par département

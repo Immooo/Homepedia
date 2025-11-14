@@ -2,6 +2,7 @@ import sqlite3
 from pathlib import Path
 
 from backend.logging_setup import setup_logging
+
 logger = setup_logging()
 
 
@@ -20,7 +21,9 @@ def safe_index(cur, table: str, column: str, suffix: str):
         cur.execute(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table}({column});")
         logger.info("Index créé/vérifié : %s sur %s(%s)", idx_name, table, column)
     else:
-        logger.warning("Colonne '%s' absente dans la table '%s' — index ignoré.", column, table)
+        logger.warning(
+            "Colonne '%s' absente dans la table '%s' — index ignoré.", column, table
+        )
 
 
 def create_indexes(conn: sqlite3.Connection) -> None:
@@ -33,7 +36,9 @@ def create_indexes(conn: sqlite3.Connection) -> None:
     safe_index(c, "transactions", "commune", "commune")
 
     # composite : date_mutation + type_local + valeur_fonciere
-    logger.info("Création de l’index composite transactions(date_mutation, type_local, valeur_fonciere)")
+    logger.info(
+        "Création de l’index composite transactions(date_mutation, type_local, valeur_fonciere)"
+    )
     c.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_tx_date_type_price

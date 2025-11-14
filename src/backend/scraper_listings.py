@@ -1,12 +1,14 @@
 import csv
-import time
 import random
+import time
 from datetime import datetime
 from pathlib import Path
+
 import requests
 from bs4 import BeautifulSoup
 
 from backend.logging_setup import setup_logging
+
 logger = setup_logging()
 
 BASE_URL = (
@@ -36,11 +38,21 @@ def get_soup(url):
 def parse_card(card):
     """Extrait les informations clés d'une carte d’annonce."""
     try:
-        prix = card.select_one(".c-pa-price").get_text(strip=True).replace("€", "").replace(" ", "")
+        prix = (
+            card.select_one(".c-pa-price")
+            .get_text(strip=True)
+            .replace("€", "")
+            .replace(" ", "")
+        )
         surface = card.select_one(".c-pa-m").get_text(strip=True).replace("m²", "")
         adresse = card.select_one(".c-pa-link").get("title")
         url = "https://www.seloger.com" + card.select_one(".c-pa-link")["href"]
-        return {"prix_euro": prix, "surface_m2": surface, "adresse": adresse, "url": url}
+        return {
+            "prix_euro": prix,
+            "surface_m2": surface,
+            "adresse": adresse,
+            "url": url,
+        }
     except Exception as e:
         logger.warning("Erreur lors du parsing d'une carte : %s", e)
         return None
@@ -62,7 +74,9 @@ def scrape(pages=3):
             if data:
                 results.append(data)
         sleep_time = random.uniform(1, 2)
-        logger.debug("Pause aléatoire de %.2f secondes avant la page suivante.", sleep_time)
+        logger.debug(
+            "Pause aléatoire de %.2f secondes avant la page suivante.", sleep_time
+        )
         time.sleep(sleep_time)
     logger.info("Scraping terminé : %d annonces collectées.", len(results))
     return results

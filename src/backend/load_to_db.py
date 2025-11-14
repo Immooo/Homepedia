@@ -1,10 +1,21 @@
 import os
-from sqlalchemy import create_engine, Column, Integer, String, Date, Numeric, MetaData, Table
-from sqlalchemy.engine.url import URL
-from dotenv import load_dotenv
+
 import pandas as pd
+from dotenv import load_dotenv
+from sqlalchemy import (
+    Column,
+    Date,
+    Integer,
+    MetaData,
+    Numeric,
+    String,
+    Table,
+    create_engine,
+)
+from sqlalchemy.engine.url import URL
 
 from backend.logging_setup import setup_logging
+
 logger = setup_logging()
 
 # 1. Charger les variables d'env

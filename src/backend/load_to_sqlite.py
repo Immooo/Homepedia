@@ -1,10 +1,21 @@
 # File: src/backend/load_to_sqlite.py
 
 import os
+
 import pandas as pd
-from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Date, Numeric
+from sqlalchemy import (
+    Column,
+    Date,
+    Integer,
+    MetaData,
+    Numeric,
+    String,
+    Table,
+    create_engine,
+)
 
 from backend.logging_setup import setup_logging
+
 logger = setup_logging()
 
 # 1. Définition des chemins
@@ -46,6 +57,7 @@ poverty = Table(
     Column("poverty_rate", Numeric(5, 2), nullable=False),
 )
 
+
 def main():
     # 4. Création de la base et des tables
     os.makedirs(os.path.dirname(DB_FILE), exist_ok=True)
@@ -55,10 +67,14 @@ def main():
     # 5. Chargement des CSV
     # Transactions
     logger.info("Lecture et chargement du CSV transactions : %s", TX_CSV)
-    df_tx = pd.read_csv(TX_CSV, parse_dates=["date_mutation"], dtype={"code_postal": str})
+    df_tx = pd.read_csv(
+        TX_CSV, parse_dates=["date_mutation"], dtype={"code_postal": str}
+    )
     # Conversion colonne valeur_fonciere si nécessaire
     if df_tx["valeur_fonciere"].dtype == object:
-        logger.info("Conversion de 'valeur_fonciere' en float (nettoyage espaces et virgules).")
+        logger.info(
+            "Conversion de 'valeur_fonciere' en float (nettoyage espaces et virgules)."
+        )
         df_tx["valeur_fonciere"] = (
             df_tx["valeur_fonciere"]
             .str.replace(" ", "")
@@ -83,6 +99,7 @@ def main():
     logger.info("Table 'poverty' chargée avec %d lignes.", len(df_pov))
 
     logger.info("✅ Chargement dans SQLite terminé.")
+
 
 if __name__ == "__main__":
     main()

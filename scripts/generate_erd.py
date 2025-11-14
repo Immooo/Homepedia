@@ -1,5 +1,6 @@
 import os
-from sqlalchemy import create_engine, MetaData
+
+from sqlalchemy import MetaData, create_engine
 
 DB_FILE = os.path.join("data", "homepedia.db")
 

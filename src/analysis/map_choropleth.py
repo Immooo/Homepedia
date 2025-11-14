@@ -1,10 +1,12 @@
 import os
 import sqlite3
-import pandas as pd
-import geopandas as gpd
+
 import folium
+import geopandas as gpd
+import pandas as pd
 
 from backend.logging_setup import setup_logging
+
 logger = setup_logging()
 
 # 1. Connexion SQLite et calcul des moyens

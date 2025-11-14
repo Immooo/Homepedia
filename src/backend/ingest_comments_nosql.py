@@ -1,8 +1,10 @@
 import os
+
 import pandas as pd
 from tinydb import TinyDB
 
 from backend.logging_setup import setup_logging
+
 logger = setup_logging()
 
 

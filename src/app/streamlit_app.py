@@ -1,21 +1,21 @@
-import os
 import math
+import os
 import random
 import sqlite3
 from typing import Any
 
+import folium
+import geopandas as gpd
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
 import streamlit as st
-import geopandas as gpd
-import folium
-from streamlit_folium import st_folium
-import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
 from scipy.stats import linregress
+from streamlit_folium import st_folium
 from textblob import TextBlob
-from wordcloud import WordCloud
 from tinydb import TinyDB
+from wordcloud import WordCloud
 
 # -----------------------------
 # Config générale
@@ -100,10 +100,14 @@ if view == "Standard":
         max_value=max_date.date(),
     )
 
-    if isinstance(raw_dates, (list, tuple)) and len(raw_dates) == 2:
+    if isinstance(raw_dates, list | tuple) and len(raw_dates) == 2:
         start_date, end_date = map(pd.to_datetime, raw_dates)
     else:
-        d = raw_dates[0] if isinstance(raw_dates, (list, tuple)) and raw_dates else raw_dates
+        d = (
+            raw_dates[0]
+            if isinstance(raw_dates, list | tuple) and raw_dates
+            else raw_dates
+        )
         start_date = end_date = pd.to_datetime(d)
 
     # Types de bien
@@ -126,7 +130,9 @@ if view == "Standard":
 
     pmin_glob = int(pmin_glob or 0)
     pmax_glob = int(pmax_glob or 10000)
-    price_range = st.sidebar.slider("Prix au m²", pmin_glob, pmax_glob, (pmin_glob, pmax_glob))
+    price_range = st.sidebar.slider(
+        "Prix au m²", pmin_glob, pmax_glob, (pmin_glob, pmax_glob)
+    )
 
     @st.cache_data(show_spinner=False)
     def load_transactions(start, end, type_sel, pmin, pmax) -> pd.DataFrame:
@@ -148,30 +154,42 @@ if view == "Standard":
             query += " AND type_local = ?"
             params.append(type_sel)
 
-        df = pd.read_sql_query(query, conn, params=params, parse_dates=["date_mutation"])
+        df = pd.read_sql_query(
+            query, conn, params=params, parse_dates=["date_mutation"]
+        )
         if "date_mutation" in df.columns:
             df["date_mutation"] = df["date_mutation"].dt.date
 
         if "valeur_fonciere" in df.columns:
-            df["valeur_fonciere"] = df["valeur_fonciere"].round(0).astype(int, errors="ignore")
+            df["valeur_fonciere"] = (
+                df["valeur_fonciere"].round(0).astype(int, errors="ignore")
+            )
         if "prix_m2" in df.columns:
-            df["prix_m2"] = pd.to_numeric(df["prix_m2"], errors="coerce").astype("Int64")
+            df["prix_m2"] = pd.to_numeric(df["prix_m2"], errors="coerce").astype(
+                "Int64"
+            )
 
         if "code_postal" in df.columns:
             df["code_postal"] = (
-                df["code_postal"].astype(str).str.replace(r"\.0$", "", regex=True).str.zfill(5)
+                df["code_postal"]
+                .astype(str)
+                .str.replace(r"\.0$", "", regex=True)
+                .str.zfill(5)
             )
         if "dept" not in df.columns and "code_postal" in df.columns:
             df["dept"] = df["code_postal"].str[:2]
         return df
 
-    tx = load_transactions(start_date, end_date, choix_type, price_range[0], price_range[1])
+    tx = load_transactions(
+        start_date, end_date, choix_type, price_range[0], price_range[1]
+    )
 
     # KPIs & export
     c1, c2, c3 = st.columns(3)
     c1.metric("Transactions chargées", f"{len(tx):,}")
     c2.metric(
-        "Surface médiane (m²)", f"{tx['surface_reelle_bati'].median():.1f}" if len(tx) else "—"
+        "Surface médiane (m²)",
+        f"{tx['surface_reelle_bati'].median():.1f}" if len(tx) else "—",
     )
     c3.metric("Prix moyen €/m²", f"{tx['prix_m2'].mean():.2f}" if len(tx) else "—")
 
@@ -206,7 +224,9 @@ if view == "Standard":
             .rename(columns={"dept": "code", "prix_m2": "prix_m2_moyen"})
         )
         try:
-            geo = gpd.read_file("data/raw/geo/departements_simplifie.geojson")[["code", "geometry"]]
+            geo = gpd.read_file("data/raw/geo/departements_simplifie.geojson")[
+                ["code", "geometry"]
+            ]
             geo = geo.merge(prix_dept, on="code", how="left")
             with st.spinner("Création carte …"):
                 m = folium.Map(location=[46.6, 2.4], zoom_start=5)
@@ -229,7 +249,9 @@ if view == "Standard":
     st.subheader("Distribution des prix au m²")
     if len(tx):
         fig1, ax1 = plt.subplots()
-        ax1.hist(tx["prix_m2"].dropna(), bins="auto", range=price_range, edgecolor="black")
+        ax1.hist(
+            tx["prix_m2"].dropna(), bins="auto", range=price_range, edgecolor="black"
+        )
         ax1.set_xlim(price_range)
         ax1.set_xlabel("Prix (€ / m²)")
         ax1.set_ylabel("Nombre de transactions")
@@ -249,7 +271,10 @@ if view == "Standard":
             fig_box.suptitle("")
             ax_box.tick_params(axis="x", labelrotation=45)
             ax_box.set_xticklabels(
-                [lab.get_text().replace(" ", "\n", 1) for lab in ax_box.get_xticklabels()],
+                [
+                    lab.get_text().replace(" ", "\n", 1)
+                    for lab in ax_box.get_xticklabels()
+                ],
                 ha="right",
                 fontsize=8,
             )
@@ -273,7 +298,9 @@ if view == "Standard":
         ax2.scatter(prix_pop["population"], prix_pop["prix_m2_moyen"], alpha=0.6)
         ax2.set_xlabel("Population départementale")
         ax2.set_ylabel("Prix moyen (€ / m²)")
-        ax2.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{x/1e6:.1f} M"))
+        ax2.xaxis.set_major_formatter(
+            mticker.FuncFormatter(lambda x, _: f"{x/1e6:.1f} M")
+        )
         st.pyplot(fig2)
     except Exception:
         st.info("Données population manquantes pour le scatter.")
@@ -333,7 +360,11 @@ elif view == "Text Analysis":
         st.subheader("Sentiment des avis")
         st.bar_chart(df_page["sentiment"])
         sample_n = st.sidebar.slider(
-            "Échantillon Word Cloud", 100, min(5000, len(docs)), min(1000, len(docs)), 100
+            "Échantillon Word Cloud",
+            100,
+            min(5000, len(docs)),
+            min(1000, len(docs)),
+            100,
         )
         sampled = random.sample(docs, min(sample_n, len(docs)))
         text = " ".join(d.get("commentaire", "") for d in sampled)
@@ -389,7 +420,9 @@ elif view == "Indicateurs Socio-éco":
     # slider chômage
     min_c = float(df_chom["taux_chomage"].min())
     max_c = float(df_chom["taux_chomage"].max())
-    min_c, max_c = st.sidebar.slider("Taux de chômage (%)", min_c, max_c, (min_c, max_c))
+    min_c, max_c = st.sidebar.slider(
+        "Taux de chômage (%)", min_c, max_c, (min_c, max_c)
+    )
     df_chom = df_chom.query("@min_c <= taux_chomage <= @max_c")
 
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
@@ -451,7 +484,9 @@ elif view == "Indicateurs Socio-éco":
         ax3.hist(df_pop["population"].dropna(), bins=30, edgecolor="black")
         ax3.set_xlabel("Population")
         ax3.set_ylabel("Nombre de départements")
-        ax3.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, pos: f"{x/1e6:.1f} M"))
+        ax3.xaxis.set_major_formatter(
+            mticker.FuncFormatter(lambda x, pos: f"{x/1e6:.1f} M")
+        )
         st.pyplot(fig3)
 
     # Pauvreté
@@ -484,7 +519,9 @@ elif view == "Indicateurs Socio-éco":
             slope, intercept, r, p, se = linregress(
                 df_corr["income_median"], df_corr["taux_chomage"]
             )
-            xx = np.linspace(df_corr["income_median"].min(), df_corr["income_median"].max(), 100)
+            xx = np.linspace(
+                df_corr["income_median"].min(), df_corr["income_median"].max(), 100
+            )
             ax5.plot(xx, intercept + slope * xx, linestyle="--", label=f"R²={r**2:.2f}")
             ax5.set_xlabel("Revenu médian (€ / an)")
             ax5.set_ylabel("Taux de chômage (%)")
@@ -541,7 +578,9 @@ elif view == "Région":
     @st.cache_data(show_spinner=False)
     def load_region_geo(path: str):
         geo = gpd.read_file(path)[["code", "geometry"]]
-        geo["geometry"] = geo["geometry"].simplify(tolerance=0.02, preserve_topology=True)
+        geo["geometry"] = geo["geometry"].simplify(
+            tolerance=0.02, preserve_topology=True
+        )
         return geo
 
     try:
@@ -554,8 +593,12 @@ elif view == "Région":
     st.subheader("Aperçu des données régionales")
     show(df_region)
 
-    pop_min = int(df_region["population"].min()) if "population" in df_region.columns else 0
-    pop_max = int(df_region["population"].max()) if "population" in df_region.columns else 0
+    pop_min = (
+        int(df_region["population"].min()) if "population" in df_region.columns else 0
+    )
+    pop_max = (
+        int(df_region["population"].max()) if "population" in df_region.columns else 0
+    )
     borne_min = (pop_min // 2_000_000) * 2_000_000
     borne_max = ((max(pop_max, 1) // 2_000_000) + 1) * 2_000_000
     st.sidebar.subheader("Plage de population (pas 2 M)")
@@ -601,11 +644,19 @@ elif view == "Région":
     ax_sp.set_ylabel("Prix moyen (€ / m²)")
     fmt = mticker.FuncFormatter(lambda x, _: f"{x/1_000_000:.1f} M")
     ax_sp.xaxis.set_major_formatter(fmt)
-    st.subheader(f"Population vs Prix moyen par région (zoom : {x_range[0]:,} → {x_range[1]:,})")
+    st.subheader(
+        f"Population vs Prix moyen par région (zoom : {x_range[0]:,} → {x_range[1]:,})"
+    )
     st.pyplot(fig_sp)
 
     st.subheader("Matrice de corrélations régionales")
-    features = ["prix_m2_moyen", "population", "income_median", "taux_chomage", "poverty_rate"]
+    features = [
+        "prix_m2_moyen",
+        "population",
+        "income_median",
+        "taux_chomage",
+        "poverty_rate",
+    ]
     cols = [c for c in features if c in df_region.columns]
     if len(cols) > 1:
         corr = df_region[cols].corr()

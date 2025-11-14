@@ -1,5 +1,7 @@
+import glob
+import os
+
 import pandas as pd
-import glob, os, pyarrow
 
 PROCESSED = os.path.join("data", "processed")
 

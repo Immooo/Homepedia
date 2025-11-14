@@ -1,9 +1,11 @@
 # File: src/backend/ingest_insee_population.py
 
 import os
+
 import pandas as pd
 
 from backend.logging_setup import setup_logging
+
 logger = setup_logging()
 
 

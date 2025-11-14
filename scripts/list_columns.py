@@ -11,6 +11,6 @@ db_path = Path(__file__).resolve().parent.parent / "data" / "homepedia.db"
 conn = sqlite3.connect(db_path)
 cursor = conn.execute(f"PRAGMA table_info({table});")
 print(f"Colonnes de la table `{table}` :")
-for cid, name, col_type, notnull, dflt, pk in cursor:
+for _cid, name, col_type, _notnull, _dflt, _pk in cursor:
     print(f" - {name} ({col_type})")
 conn.close()

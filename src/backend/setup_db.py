@@ -1,25 +1,24 @@
 # File: src/backend/setup_db.py
 import os
 import sqlite3
-import math
 
-import streamlit as st
-import pandas as pd
-import geopandas as gpd
-import folium
 import matplotlib.pyplot as plt
-from streamlit_folium import st_folium
+import pandas as pd
+import streamlit as st
 from textblob import TextBlob
 from wordcloud import WordCloud
 
 from backend.logging_setup import setup_logging
+
 logger = setup_logging()
 
 # 1. Config page et choix de la vue
 st.set_page_config(page_title="Homepedia – Analyses Immobilier France", layout="wide")
 st.title("🏠 Homepedia – Analyses Immobilier France")
 
-view = st.sidebar.radio("Choix de la vue", ["Standard", "Spark Analysis", "Text Analysis"])
+view = st.sidebar.radio(
+    "Choix de la vue", ["Standard", "Spark Analysis", "Text Analysis"]
+)
 logger.info("Vue sélectionnée: %s", view)
 
 # 2. Connexion SQLite
@@ -64,7 +63,9 @@ try:
             return TextBlob(text).sentiment.polarity
 
         logger.info("Calcul des scores de sentiment")
-        df_comments["sentiment"] = df_comments["commentaire"].astype(str).apply(sentiment_score)
+        df_comments["sentiment"] = (
+            df_comments["commentaire"].astype(str).apply(sentiment_score)
+        )
         st.subheader("Sentiment des commentaires")
         st.write(df_comments[["commentaire", "sentiment"]].head(10))
 

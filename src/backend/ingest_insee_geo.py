@@ -1,8 +1,10 @@
 import os
-import pandas as pd
 import sqlite3
 
+import pandas as pd
+
 from backend.logging_setup import setup_logging
+
 logger = setup_logging()
 
 

@@ -2,21 +2,21 @@
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
 from datetime import datetime
-from typing import Tuple
+from pathlib import Path
 
 import pandas as pd
-from pynsee.localdata import get_local_metadata, get_local_data
+from pynsee.localdata import get_local_data, get_local_metadata
 
 from backend.logging_setup import setup_logging
+
 logger = setup_logging()
 
 # Base SQLite : data/homepedia.db à la racine du repo
 DB = Path(__file__).resolve().parents[2] / "data" / "homepedia.db"
 
 
-def latest_dataset(keyword: str) -> Tuple[str, str]:
+def latest_dataset(keyword: str) -> tuple[str, str]:
     """
     Retourne (dataset_id, dataset_version) du jeu le plus récent
     dont l’un des champs *title* contient `keyword` ET Geography = REGION.
@@ -36,7 +36,9 @@ def latest_dataset(keyword: str) -> Tuple[str, str]:
     )
 
     # Filtre niveau régional
-    sub = meta[mask_title & meta["geography"].str.contains("region", case=False, na=False)]
+    sub = meta[
+        mask_title & meta["geography"].str.contains("region", case=False, na=False)
+    ]
     if sub.empty:
         raise ValueError(f"Pas de dataset contenant « {keyword} » au niveau régional.")
 
@@ -59,7 +61,9 @@ def fetch(keyword: str, new_col: str) -> pd.DataFrame:
     Récupère un dataset régional par mot-clé et renomme la valeur observée.
     """
     ds_id, ds_ver = latest_dataset(keyword)
-    logger.info("Récupération dataset '%s' (version %s) pour '%s'", ds_id, ds_ver, keyword)
+    logger.info(
+        "Récupération dataset '%s' (version %s) pour '%s'", ds_id, ds_ver, keyword
+    )
     df = get_local_data(ds_id, ds_ver)
     df.columns = df.columns.str.lower()
 

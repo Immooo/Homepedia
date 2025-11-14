@@ -1,8 +1,10 @@
 import os
 import sqlite3
+
 import pandas as pd
 
 from backend.logging_setup import setup_logging
+
 logger = setup_logging()
 
 # 1. Chemins
@@ -41,7 +43,9 @@ pdf_tx["dept"] = pdf_tx["code_postal"].str[:2]
 pdf_tx = pdf_tx.merge(df_dep_reg, left_on="dept", right_on="DEP", how="left")
 pdf_tx = pdf_tx.dropna(subset=["REG"])
 pdf_tx["valeur_fonciere"] = pd.to_numeric(pdf_tx["valeur_fonciere"], errors="coerce")
-pdf_tx["surface_reelle_bati"] = pd.to_numeric(pdf_tx["surface_reelle_bati"], errors="coerce")
+pdf_tx["surface_reelle_bati"] = pd.to_numeric(
+    pdf_tx["surface_reelle_bati"], errors="coerce"
+)
 pdf_tx = pdf_tx[pdf_tx["surface_reelle_bati"] > 0]
 pdf_tx["prix_m2"] = pdf_tx["valeur_fonciere"] / pdf_tx["surface_reelle_bati"]
 rg_tx = (
