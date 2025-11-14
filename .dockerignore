@@ -1,10 +1,34 @@
-.venv
-__pycache__
-*.pyc
-.git
-data/
-outputs/
-notebooks/
+# --- Git ---
+.git/
 .gitignore
 .gitmodules
-infra/*
+
+# --- Environnements Python ---
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- IDE & outils de dev ---
+.idea/
+.vscode/
+
+# --- Secrets & variables d'environnement ---
+.env
+.env.local
+
+# --- Données lourdes ou générées ---
+data/
+db/
+outputs/
+logs/
+tmp/
+notebooks/
+.notebooks/
+.ipynb_checkpoints/
+
+# --- Infra ---
+infra/
