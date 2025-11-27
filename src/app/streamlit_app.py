@@ -16,6 +16,7 @@ import numpy as np
 from typing import Any, List
 import matplotlib.ticker as mticker
 import seaborn as sns
+from app.db.mongo_client import get_mongo_collection
 
 COLS_NICE = {
     "code": "Département", "dept": "Département", "code_region": "Région",
@@ -112,29 +113,43 @@ if view == "Standard":
         end_iso   = end.strftime("%Y-%m-%d")
 
         query = """
-            SELECT *,
-                valeur_fonciere / surface_reelle_bati AS prix_m2,
-                substr(code_postal,1,2) AS dept
+            SELECT * ,
+                   valeur_fonciere / surface_reelle_bati AS prix_m2,
+                   substr(code_postal,1,2) AS dept
             FROM   transactions
             WHERE  date_mutation BETWEEN ? AND ?
-            AND  surface_reelle_bati > 0
-            AND  valeur_fonciere IS NOT NULL
-            AND  (valeur_fonciere / surface_reelle_bati) BETWEEN ? AND ?
+              AND  surface_reelle_bati > 0
+              AND  valeur_fonciere IS NOT NULL
+              AND  (valeur_fonciere / surface_reelle_bati) BETWEEN ? AND ?
         """
         params = [start_iso, end_iso, pmin, pmax]
 
-        df["code_postal"] = df["code_postal"].astype(str).str.replace(r"\.0$", "", regex=True)
-
-        if "dept" not in df.columns:
-            df["dept"] = df["code_postal"].str[:2].str.zfill(2)
-
+        # Filtre sur le type de bien (optionnel)
         if type_sel != "Tous":
             query += " AND type_local = ?"
             params.append(type_sel)
 
-        return pd.read_sql_query(
-            query, conn, params=params, parse_dates=["date_mutation"]
+        # 🔹 Création du DataFrame
+        df = pd.read_sql_query(
+            query,
+            conn,
+            params=params,
+            parse_dates=["date_mutation"]
         )
+
+        # 🔹 Nettoyage du code postal (si la colonne existe)
+        if "code_postal" in df.columns:
+            df["code_postal"] = (
+                df["code_postal"]
+                .astype(str)
+                .str.replace(r"\.0$", "", regex=True)
+            )
+
+        # 🔹 Sécurisation du dept si nécessaire
+        if "dept" not in df.columns and "code_postal" in df.columns:
+            df["dept"] = df["code_postal"].str[:2].str.zfill(2)
+
+        return df
 
     tx = load_transactions(start_date, end_date, choix_type, price_range[0], price_range[1])
 
@@ -600,5 +615,11 @@ elif view == "Méthodologie":
     - Tests unitaires sur chaque ingestion  
     - Déploiement cloud (railway.app, Render, etc.)
     """)
+
+def show_mongo_debug():
+    col = get_mongo_collection("properties")  
+    doc = col.find_one()
+    st.write("Exemple document Mongo :", doc)
+
 # Clôture
 conn.close()

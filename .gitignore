@@ -40,6 +40,9 @@ kaggle.json
 *.db
 *.sqlite3
 data/homepedia.db
+mongo_dump_homepedia/
+mongo_dump_homepedia.zip
+data/raw/
 data/processed/*
 outputs/*
 !outputs/.gitkeep
@@ -62,3 +65,12 @@ logs/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# ===============================
+# MONGODB / DONNÉES LOCALES
+# ===============================
+mongo_data/
+mongo_data/.mongodb/
+mongo_data/WiredTiger*
+mongo_data/journal/
+*.wt
