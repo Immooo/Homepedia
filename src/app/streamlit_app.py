@@ -1,3 +1,12 @@
+import sys
+print(">>> PYTHONPATH:", sys.path)
+from pathlib import Path
+ROOT_DIR = Path(__file__).resolve().parents[2]  
+SRC_DIR = ROOT_DIR / "src"
+
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
 import os
 import sqlite3
 import math
@@ -17,18 +26,41 @@ from typing import Any, List
 import matplotlib.ticker as mticker
 import seaborn as sns
 from app.db.mongo_client import get_mongo_collection
+from collections.abc import Sequence
 
 COLS_NICE = {
-    "code": "Département", "dept": "Département", "code_region": "Région",
-    "nb_transactions": "Nombres de transactions", "prix_m2_moyen": "Prix moyen €/m²",
-    "prix_m2": "Prix €/m²", "surface_reelle_bati": "Surface bâtie m²",
+    "code": "Département",
+    "dept": "Département",
+    "code_region": "Région",
+
+    "id": "ID transaction",
+    "date_mutation": "Date mutation",
+    "nature_mutation": "Nature de la mutation",
     "valeur_fonciere": "Valeur foncière €",
-    "population": "Population", "income_median": "Revenu médian €",
-    "taux_chomage": "Taux chômage %", "poverty_rate": "Taux pauvreté %",
-    "income"      : "Revenu médian € ",
+    "code_postal": "Code postal",
+    "commune": "Commune",
+    "type_local": "Type de bien",
+    "surface_reelle_bati": "Surface bâtie m²",
+    "nombre_pieces_principales": "Nb pièces principales",
+
+    "nb_transactions": "Nombres de transactions",
+    "prix_m2_moyen": "Prix moyen €/m²",
+    "prix_m2": "Prix €/m²",
+
+    "population": "Population",
+    "income_median": "Revenu médian €",
+    "taux_chomage": "Taux chômage %",
+    "poverty_rate": "Taux pauvreté %",
+
+    "income": "Revenu médian € ",
     "unemployment": "Taux chômage % ",
-    "poverty"     : "Taux pauvreté % "
+    "poverty": "Taux pauvreté % ",
 }
+
+def compute_polarity(text: str) -> float:
+    blob = TextBlob(str(text))
+    sent: Any = blob.sentiment 
+    return float(sent.polarity)
 
 def pretty(df: pd.DataFrame) -> pd.DataFrame:
     return df.rename(columns={k: v for k, v in COLS_NICE.items() if k in df.columns})
@@ -65,24 +97,58 @@ if view == "Standard":
     def sql_scalar(query: str):
         return conn.execute(query).fetchone()[0]
 
+    # --- Mode d'analyse ---
+    mode = st.sidebar.radio(
+        "Mode d'analyse",
+        ["Rapide (échantillon léger)", "Détaillé (toutes les visualisations)"]
+    )
+    fast_mode = mode.startswith("Rapide")
+
     # --- Période ---
     st.sidebar.subheader("Filtres Transactions")
+
+    if fast_mode:
+        max_rows = st.sidebar.slider(
+            "Nombre maximum de lignes à charger",
+            min_value=10_000,
+            max_value=80_000,
+            value=40_000,
+            step=10_000,
+            help="Mode rapide : petit échantillon pour garder l'interface très fluide."
+        )
+    else:
+        max_rows = st.sidebar.slider(
+            "Nombre maximum de lignes à charger",
+            min_value=50_000,
+            max_value=200_000,
+            value=120_000,
+            step=10_000,
+            help="Mode détaillé : plus de données, calculs et graphiques plus lourds."
+        )
+
     min_date = pd.to_datetime("2024-01-01")
     max_date = pd.to_datetime("2024-12-31")
     raw_dates = st.sidebar.date_input(
         "Période",
         [min_date.date(), max_date.date()],
         min_value=min_date.date(),
-        max_value=max_date.date()
+        max_value=max_date.date(),
     )
-    
-    if isinstance(raw_dates, tuple):
-        start_date = pd.to_datetime(raw_dates[0])
-        end_date   = pd.to_datetime(raw_dates[1] if len(raw_dates) > 1 else raw_dates[0])
-    else:  
+
+    if isinstance(raw_dates, Sequence):
+        dates_list = list(raw_dates)
+        if len(dates_list) == 0:
+            start_date = min_date
+            end_date = max_date
+        elif len(dates_list) == 1:
+            start_date = end_date = pd.to_datetime(dates_list[0])
+        else:
+            start_date = pd.to_datetime(dates_list[0])
+            end_date   = pd.to_datetime(dates_list[1])
+    else:
         start_date = end_date = pd.to_datetime(raw_dates)
 
-    # --- Type de bien (liste depuis la base) ---
+    # --- Type de bien ---
     type_list = ["Tous"] + [
         r[0] for r in conn.execute(
             "SELECT DISTINCT type_local FROM transactions WHERE type_local IS NOT NULL ORDER BY 1"
@@ -90,54 +156,61 @@ if view == "Standard":
     ]
     choix_type = st.sidebar.selectbox("Type de logement", type_list)
 
-    # --- Min / Max prix_m2 globaux (pour le slider) ---
     pmin_glob, pmax_glob = conn.execute("""
         SELECT
             MIN(valeur_fonciere / surface_reelle_bati),
             MAX(valeur_fonciere / surface_reelle_bati)
         FROM transactions
         WHERE surface_reelle_bati > 0
-          AND valeur_fonciere IS NOT NULL
+        AND valeur_fonciere IS NOT NULL
     """).fetchone()
+
+    if pmin_glob is None or pmax_glob is None:
+        pmin_glob, pmax_glob = 0, 20_000
+    else:
+        pmin_glob = max(0, int(pmin_glob))
+        pmax_glob = min(int(pmax_glob), 20_000)
 
     price_range = st.sidebar.slider(
         "Prix au m²",
-        int(pmin_glob), int(pmax_glob),
-        (int(pmin_glob), int(pmax_glob))
+        pmin_glob,
+        pmax_glob,
+        (pmin_glob, pmax_glob),
     )
 
     # --- Chargement filtré ---
     @st.cache_data(show_spinner=False)
-    def load_transactions(start, end, type_sel, pmin, pmax):
+    def load_transactions(start, end, type_sel, pmin, pmax, max_rows: int):
         start_iso = start.strftime("%Y-%m-%d")
         end_iso   = end.strftime("%Y-%m-%d")
 
         query = """
             SELECT * ,
-                   valeur_fonciere / surface_reelle_bati AS prix_m2,
-                   substr(code_postal,1,2) AS dept
+                valeur_fonciere / surface_reelle_bati AS prix_m2,
+                substr(code_postal,1,2) AS dept
             FROM   transactions
-            WHERE  date_mutation BETWEEN ? AND ?
-              AND  surface_reelle_bati > 0
-              AND  valeur_fonciere IS NOT NULL
-              AND  (valeur_fonciere / surface_reelle_bati) BETWEEN ? AND ?
+            WHERE  date(date_mutation) BETWEEN ? AND ?
+            AND  surface_reelle_bati > 0
+            AND  valeur_fonciere IS NOT NULL
+            AND  (valeur_fonciere / surface_reelle_bati) BETWEEN ? AND ?
         """
         params = [start_iso, end_iso, pmin, pmax]
 
-        # Filtre sur le type de bien (optionnel)
         if type_sel != "Tous":
             query += " AND type_local = ?"
             params.append(type_sel)
 
-        # 🔹 Création du DataFrame
+        # Limite de sécurité
+        query += " LIMIT ?"
+        params.append(max_rows)
+
         df = pd.read_sql_query(
             query,
             conn,
             params=params,
-            parse_dates=["date_mutation"]
+            parse_dates=["date_mutation"],
         )
 
-        # 🔹 Nettoyage du code postal (si la colonne existe)
         if "code_postal" in df.columns:
             df["code_postal"] = (
                 df["code_postal"]
@@ -145,19 +218,37 @@ if view == "Standard":
                 .str.replace(r"\.0$", "", regex=True)
             )
 
-        # 🔹 Sécurisation du dept si nécessaire
         if "dept" not in df.columns and "code_postal" in df.columns:
             df["dept"] = df["code_postal"].str[:2].str.zfill(2)
 
         return df
 
-    tx = load_transactions(start_date, end_date, choix_type, price_range[0], price_range[1])
+    tx = load_transactions(
+        start_date,
+        end_date,
+        choix_type,
+        price_range[0],
+        price_range[1],
+        max_rows  
+    )
 
     # --- KPIs & export ---
     col1, col2, col3 = st.columns(3)
-    col1.metric("Transactions chargées", f"{len(tx):,}")
+    col1.metric("Transactions chargées (échantillon)", f"{len(tx):,}")
     col2.metric("Surface médiane (m²)", f"{tx['surface_reelle_bati'].median():.1f}")
     col3.metric("Prix moyen €/m²", f"{tx['prix_m2'].mean():.2f}")
+
+    if fast_mode:
+        st.caption(
+            f"Mode rapide – échantillon de {len(tx):,} transactions sur ~200 000 au total "
+            "pour garder l'interface très fluide."
+        )
+    else:
+        st.caption(
+            f"Mode détaillé – échantillon de {len(tx):,} transactions sur ~5,8 M au total "
+            "avec toutes les visualisations activées."
+        )
+
 
     st.download_button(
         "📥 Exporter ces transactions (CSV)",
@@ -179,7 +270,7 @@ if view == "Standard":
     geo = gpd.read_file("data/raw/geo/departements_simplifie.geojson")[["code", "geometry"]]
     geo = geo.merge(prix_dept, on="code", how="left")
 
-    if st.checkbox("Afficher la carte", value=True):
+    if (not fast_mode) and st.checkbox("Afficher la carte", value=True):
         with st.spinner("Création carte …"):
             m = folium.Map(location=[46.6, 2.4], zoom_start=5)
             folium.Choropleth(
@@ -197,39 +288,68 @@ if view == "Standard":
 
     # --- Histogramme ---
     st.subheader("Distribution des prix au m²")
-    fig1, ax1 = plt.subplots()
-    ax1.hist(tx["prix_m2"], bins="auto", range=price_range, edgecolor="black")
-    ax1.set_xlim(price_range)             
-    ax1.set_xlabel("Prix (€ / m²)")
-    ax1.set_ylabel("Nombre de transactions")
-    st.pyplot(fig1, use_container_width=True)
+
+    valid_prices = tx["prix_m2"].replace([np.inf, -np.inf], np.nan).dropna()
+
+    if valid_prices.empty:
+        st.info("Aucune transaction exploitable pour ces filtres (prix/m² manquant).")
+    else:
+        q01 = valid_prices.quantile(0.01)
+        q99 = valid_prices.quantile(0.99)
+
+        xmin = max(price_range[0], int(q01))
+        xmax = min(price_range[1], int(q99))
+
+        fig1, ax1 = plt.subplots()
+        ax1.hist(
+            valid_prices,
+            bins="auto",
+            range=(xmin, xmax),
+            edgecolor="black",
+        )
+        ax1.set_xlim(xmin, xmax)
+        ax1.set_xlabel("Prix (€ / m²)")
+        ax1.set_ylabel("Nombre de transactions")
+        st.pyplot(fig1, use_container_width=True)
 
     # --- Box-plot ---
-    st.subheader("Dispersion prix/m² par type de bien")
-    fig_box, ax_box = plt.subplots(figsize=(9, 4))
-    tx.boxplot(column="prix_m2", by="type_local", ax=ax_box, showfliers=False)
-    ax_box.set_xlabel("")
-    ax_box.set_ylabel("€ / m²")
-    ax_box.set_title("")
-    ax_box.tick_params(axis="x", labelrotation=45)
-    ax_box.set_xticklabels(
-        [lab.get_text().replace(" ", "\n", 1) for lab in ax_box.get_xticklabels()],
-        ha="right", fontsize=8
-    )
-    st.pyplot(fig_box)
+    if not fast_mode:
+        st.subheader("Dispersion prix/m² par type de bien")
+
+        fig_box, ax_box = plt.subplots(figsize=(9, 4))
+        tx.boxplot(column="prix_m2", by="type_local", ax=ax_box, showfliers=False)
+
+        fig_box.suptitle("Boxplot du prix au m² par type de bien")
+        ax_box.set_title("")
+
+        ax_box.set_xlabel("Type de bien")
+        ax_box.set_ylabel("€ / m²")
+        ax_box.tick_params(axis="x", labelrotation=45)
+        ax_box.set_xticklabels(
+            [lab.get_text().replace(" ", "\n", 1) for lab in ax_box.get_xticklabels()],
+            ha="right",
+            fontsize=8,
+        )
+
+        st.pyplot(fig_box)
 
     # --- Scatter population ---
-    pop = pd.read_sql_query("SELECT * FROM population", conn)
-    prix_pop = prix_dept.merge(pop, on="code", how="left")
+    if not fast_mode:
+        pop = pd.read_sql_query("SELECT * FROM population", conn)
+        prix_pop = prix_dept.merge(pop, on="code", how="left")
 
-    st.subheader("Population vs Prix moyen")
-    fig2, ax2 = plt.subplots()
-    ax2.scatter(prix_pop["population"], prix_pop["prix_m2_moyen"], alpha=0.6)
-    ax2.set_xlabel("Population départementale")
-    ax2.set_ylabel("Prix moyen (€ / m²)")
-    import matplotlib.ticker as mticker
-    ax2.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{x/1e6:.1f} M"))
-    st.pyplot(fig2)
+        st.subheader("Population vs Prix moyen")
+        fig2, ax2 = plt.subplots()
+        ax2.scatter(prix_pop["population"], prix_pop["prix_m2_moyen"], alpha=0.6)
+        ax2.set_xlabel("Population départementale")
+        ax2.set_ylabel("Prix moyen (€ / m²)")
+        ax2.xaxis.set_major_formatter(
+            mticker.FuncFormatter(lambda x, _: f"{x/1e6:.1f} M")
+        )
+        st.pyplot(fig2)
+
+        st.subheader("Population par département (jointure DVF + INSEE)")
+        show(prix_pop[["code", "population", "prix_m2_moyen"]])
 
 # === VUE SPARK ANALYSIS ===
 elif view == "Spark Analysis":
@@ -271,7 +391,7 @@ elif view == "Text Analysis":
     df_page = pd.DataFrame(subset)
     st.subheader(f"Commentaires (page {page})")
     show(df_page)
-    df_page['sentiment'] = df_page['commentaire'].map(lambda t: TextBlob(t).sentiment.polarity)
+    df_page["sentiment"] = df_page["commentaire"].map(compute_polarity)
     st.subheader("Sentiment des avis")
     st.bar_chart(df_page['sentiment'])
     sample_n = st.sidebar.slider("Échantillon Word Cloud", 100, 5000, 1000, 100)
@@ -435,7 +555,9 @@ elif view == "Indicateurs Socio-éco":
         ax5.scatter(df_corr["income_median"], df_corr["taux_chomage"], alpha=0.7)
         slope, intercept, r, p, se = linregress(df_corr["income_median"], df_corr["taux_chomage"])
         xx = np.linspace(df_corr["income_median"].min(), df_corr["income_median"].max(), 100)
-        ax5.plot(xx, intercept + slope*xx, linestyle='--', label=f"R²={r**2:.2f}")
+        r_arr = np.asarray(r, dtype="float64")
+        r2 = r_arr ** 2
+        ax5.plot(xx, intercept + slope * xx, linestyle='--', label=f"R²={r2:.2f}")
         ax5.set_xlabel("Revenu médian (€ / an)")
         ax5.set_ylabel("Taux de chômage (%)")
         ax5.legend()
@@ -456,7 +578,9 @@ elif view == "Indicateurs Socio-éco":
         for i in range(len(corr)):
             for j in range(len(corr)):
                 val = corr.iat[i,j]
-                color = "white" if abs(val)>0.5 else "black"
+                val_f = np.asarray(val, dtype="float64")
+                color = "white" if abs(val_f) > 0.5 else "black"
+                color = "white" if abs(val_f) > 0.5 else "black"
                 ax6.text(j, i, f"{val:.2f}", ha="center", va="center", color=color)
         fig6.colorbar(cax, ax=ax6, fraction=0.046, pad=0.04)
         st.pyplot(fig6)
@@ -581,6 +705,12 @@ elif view == "Région":
 # === VUE MÉTHODOLOGIE ===
 elif view == "Méthodologie":
     st.header("📚 Méthodologie & Choix techniques")
+
+    if st.button("🔍 Tester la connexion Mongo"):
+        from app.db.mongo_client import get_mongo_collection
+        col = get_mongo_collection("transactions")
+        doc = col.find_one()
+        st.write("Exemple document Mongo :", doc)
 
     st.markdown("""
     ### Pré-processing des données

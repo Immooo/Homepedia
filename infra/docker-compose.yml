@@ -15,7 +15,6 @@ services:
     environment:
       <<: *default-env
       STREAMLIT_SERVER_HEADLESS: "true"
-      # 🔽 Ajout pour Mongo
       MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
       MONGO_DB: ${MONGO_DB:-homepedia}
     volumes:
