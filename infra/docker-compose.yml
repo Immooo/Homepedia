@@ -22,18 +22,15 @@ services:
       - ../src:/app/src:rw
       - ../outputs:/app/outputs:rw
     working_dir: /app
-    command: >
-      src/app/streamlit_app.py
-      --server.address=0.0.0.0
-      --server.port=${STREAMLIT_SERVER_PORT:-8501}
+
     ports:
       - "${STREAMLIT_SERVER_PORT:-8501}:8501"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8501/_stcore/health || exit 1"]
-      interval: 15s
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8501/healthz || exit 1"]
+      interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 5
 
   metabase:
     image: metabase/metabase:latest
