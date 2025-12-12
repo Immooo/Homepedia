@@ -3,7 +3,18 @@ import sqlite3
 
 import pandas as pd
 
-from backend.logging_setup import setup_logging
+# from backend.logging_setup import setup_logging
+from src.backend.logging_setup import setup_logging
+
+
+def normalize_dept(code: str) -> str:
+    if pd.isna(code):
+        return ""
+    code = str(code).replace(".0", "")
+    if code in ("2A", "2B"):
+        return code
+    return code.zfill(2)
+
 
 logger = setup_logging()
 
@@ -59,17 +70,38 @@ rg_tx = (
 agg_dfs = []
 for table, col, aggfunc in [
     ("population", "population", "sum"),
-    ("income", "income_median", "median"),
-    ("unemployment", "taux_chomage", "mean"),
-    ("poverty", "poverty_rate", "mean"),
+    ("revenus", "income_median", "median"),
+    ("chomage", "taux_chomage", "mean"),
+    ("pauvrete", "poverty_rate", "mean"),
 ]:
     df = pd.read_sql_query(f"SELECT code, {col} FROM {table}", conn)
-    df = df.rename(columns={"code": "DEPCODE"})
-    df = df.merge(df_dep_reg, left_on="DEPCODE", right_on="DEP", how="left")
+
+    # 🔥 NORMALISATION CRITIQUE
+    df["DEPCODE"] = df["code"].apply(normalize_dept)
+
+    df = df.merge(
+        df_dep_reg,
+        left_on="DEPCODE",
+        right_on="DEP",
+        how="left",
+        indicator=True,
+    )
+
+    # LOG des lignes perdues (important)
+    lost = df[df["_merge"] == "left_only"]
+    if not lost.empty:
+        logger.warning(
+            "[WARN] %d lignes %s non rattachées à une région",
+            len(lost),
+            table,
+        )
+
     df = df.dropna(subset=["REG"])
     df[col] = pd.to_numeric(df[col], errors="coerce")
+
     summary = getattr(df.groupby("REG")[col], aggfunc)().reset_index()
     summary = summary.rename(columns={"REG": "code_region", col: table})
+
     agg_dfs.append(summary)
 
 # 6. Fusion de toutes les tables
