@@ -1,10 +1,12 @@
 SHELL := /bin/bash
 COMPOSE := docker compose -f infra/docker-compose.yml --env-file .env
 
-.PHONY: help build rebuild up down logs ps health sh-app init-db etl-ls etl-valeurs etl-insee etl-agg etl-spark
+.PHONY: help build rebuild up down logs ps health sh-app init-db \
+        etl-ls etl-valeurs etl-insee etl-agg etl-spark etl-export etl-schema etl-all etl-fix
 
 help:
-	@echo "Targets: build, rebuild, up, down, logs, ps, health, sh-app, init-db, etl-*"
+	@echo "Targets: build, rebuild, up, down, logs, ps, health, sh-app, init-db"
+	@echo "ETL targets: etl-ls, etl-insee, etl-valeurs, etl-spark, etl-agg, etl-export, etl-schema, etl-all, etl-fix"
 
 build:
 	$(COMPOSE) build
@@ -36,18 +38,29 @@ init-db:
 	    con.execute('CREATE TABLE IF NOT EXISTS _bootstrap (id INTEGER PRIMARY KEY, created_at TEXT)'); \
 	    con.commit(); con.close(); print('DB ready at',db)"
 
-# Exécutions ETL à la demande (adapte si besoin)
 etl-ls:
-	@echo "ETL disponibles : valeursfoncieres, insee, agg, spark"
-
-etl-valeurs:
-	$(COMPOSE) exec app python src/backend/ingest_valeursfoncieres.py
+	@echo "ETL disponibles : etl-insee, etl-valeurs, etl-spark, etl-agg, etl-export, etl-schema, etl-all, etl-fix"
 
 etl-insee:
 	$(COMPOSE) exec app bash -lc "python src/backend/ingest_insee_population.py && python src/backend/ingest_insee_income.py && python src/backend/ingest_insee_unemployment.py && python src/backend/ingest_insee_poverty.py && python src/backend/ingest_insee_region.py"
 
-etl-agg:
-	$(COMPOSE) exec app python src/backend/aggregate_by_region.py
+etl-valeurs:
+	$(COMPOSE) exec app python src/backend/ingest_valeursfoncieres.py
 
 etl-spark:
 	$(COMPOSE) exec app python src/backend/spark_dvf_analysis.py
+
+etl-agg:
+	$(COMPOSE) exec app python src/backend/aggregate_by_region.py
+
+etl-export:
+	$(COMPOSE) exec app python src/etl/sqlite_to_mongo_all_tables.py
+
+etl-schema:
+	$(COMPOSE) exec app bash -lc "sqlite3 $${DB_PATH:-data/homepedia.db} '.tables' && echo '---' && sqlite3 $${DB_PATH:-data/homepedia.db} '.schema revenus' && echo '---' && sqlite3 $${DB_PATH:-data/homepedia.db} '.schema pauvrete' && echo '---' && sqlite3 $${DB_PATH:-data/homepedia.db} '.schema analyse_regionale'"
+
+etl-all: etl-insee etl-valeurs etl-spark etl-agg etl-export
+	@echo "✅ Pipeline complet terminé (INSEE + DVF + Spark + Agg + Export Mongo)"
+
+etl-fix: etl-valeurs etl-spark etl-agg etl-export
+	@echo "✅ Pipeline rapide terminé (DVF + Spark + Agg + Export Mongo)"

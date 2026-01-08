@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 from pynsee.localdata import get_local_data, get_local_metadata
 
-from backend.logging_setup import setup_logging
+from src.backend.logging_setup import setup_logging
 
 logger = setup_logging()
 

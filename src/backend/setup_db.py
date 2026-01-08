@@ -8,7 +8,7 @@ import streamlit as st
 from textblob import TextBlob
 from wordcloud import WordCloud
 
-from backend.logging_setup import setup_logging
+from src.backend.logging_setup import setup_logging
 
 logger = setup_logging()
 

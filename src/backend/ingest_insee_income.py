@@ -5,7 +5,7 @@ import sqlite3
 
 import pandas as pd
 
-from backend.logging_setup import setup_logging
+from src.backend.logging_setup import setup_logging
 
 logger = setup_logging()
 
@@ -53,7 +53,12 @@ def main():
     df_dept = (
         df_filt.groupby("dept", as_index=False)["income_median"]
         .median()
-        .rename({"dept": "code"}, axis=1)
+        .rename(
+            columns={
+                "dept": "code",
+                "income_median": "revenu_median",
+            }
+        )
     )
 
     logger.info("Écriture du CSV intermédiaire : %s", OUT_CSV)

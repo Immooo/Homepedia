@@ -14,7 +14,7 @@ from sqlalchemy import (
     create_engine,
 )
 
-from backend.logging_setup import setup_logging
+from src.backend.logging_setup import setup_logging
 
 logger = setup_logging()
 

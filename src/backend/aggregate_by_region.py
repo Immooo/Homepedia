@@ -3,7 +3,7 @@ import sqlite3
 
 import pandas as pd
 
-# from backend.logging_setup import setup_logging
+# from src.backend.logging_setup import setup_logging
 from src.backend.logging_setup import setup_logging
 
 
@@ -100,7 +100,20 @@ for table, col, aggfunc in [
     df[col] = pd.to_numeric(df[col], errors="coerce")
 
     summary = getattr(df.groupby("REG")[col], aggfunc)().reset_index()
-    summary = summary.rename(columns={"REG": "code_region", col: table})
+
+    column_map = {
+        "population": "population",
+        "income_median": "revenu_median",
+        "taux_chomage": "taux_chomage",
+        "poverty_rate": "taux_pauvrete",
+    }
+
+    summary = summary.rename(
+        columns={
+            "REG": "code_region",
+            col: column_map[col],
+        }
+    )
 
     agg_dfs.append(summary)
 

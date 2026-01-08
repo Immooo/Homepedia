@@ -5,7 +5,7 @@ import sqlite3
 
 import pandas as pd
 
-from backend.logging_setup import setup_logging
+from src.backend.logging_setup import setup_logging
 
 logger = setup_logging()
 
@@ -42,7 +42,11 @@ def main():
 
     # 6. Agrégation par département (médiane)
     logger.info("Agrégation par département (médiane)")
-    df_dept = df.groupby("code", as_index=False)["poverty_rate"].median()
+    df_dept = (
+        df.groupby("code", as_index=False)["poverty_rate"]
+        .median()
+        .rename(columns={"poverty_rate": "taux_pauvrete"})
+    )
 
     # 7. Sauvegarde CSV
     logger.info("Écriture du CSV de sortie : %s", OUT_CSV)

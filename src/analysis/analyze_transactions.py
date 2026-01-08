@@ -3,7 +3,7 @@ import sqlite3
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from backend.logging_setup import setup_logging
+from src.backend.logging_setup import setup_logging
 
 logger = setup_logging()
 
