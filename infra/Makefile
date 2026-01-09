@@ -2,11 +2,13 @@ SHELL := /bin/bash
 COMPOSE := docker compose -f infra/docker-compose.yml --env-file .env
 
 .PHONY: help build rebuild up down logs ps health sh-app init-db \
-        etl-ls etl-valeurs etl-insee etl-agg etl-spark etl-export etl-schema etl-all etl-fix
+        etl-ls etl-valeurs etl-insee etl-agg etl-spark etl-export etl-schema etl-all etl-fix \
+        rt-ls rt-up rt-down rt-restart rt-logs rt-ps rt-scrape-now rt-interval-60 rt-interval-300
 
 help:
 	@echo "Targets: build, rebuild, up, down, logs, ps, health, sh-app, init-db"
 	@echo "ETL targets: etl-ls, etl-insee, etl-valeurs, etl-spark, etl-agg, etl-export, etl-schema, etl-all, etl-fix"
+	@echo "Realtime targets: rt-ls, rt-up, rt-down, rt-restart, rt-logs, rt-ps, rt-scrape-now, rt-interval-60, rt-interval-300"
 
 build:
 	$(COMPOSE) build
@@ -64,3 +66,38 @@ etl-all: etl-insee etl-valeurs etl-spark etl-agg etl-export
 
 etl-fix: etl-valeurs etl-spark etl-agg etl-export
 	@echo "✅ Pipeline rapide terminé (DVF + Spark + Agg + Export Mongo)"
+
+
+# =========================
+# Realtime (polling scraping)
+# =========================
+
+rt-ls:
+	@echo "Realtime : rt-up, rt-down, rt-restart, rt-logs, rt-ps, rt-scrape-now"
+	@echo "Ajuster l'intervalle: rt-interval-60 (démo), rt-interval-300 (prod scolaire)"
+
+rt-up:
+	$(COMPOSE) up -d realtime-price
+
+rt-down:
+	$(COMPOSE) stop realtime-price
+
+rt-restart:
+	$(COMPOSE) restart realtime-price
+
+rt-logs:
+	$(COMPOSE) logs -f --tail=200 realtime-price
+
+rt-ps:
+	$(COMPOSE) ps realtime-price
+
+rt-scrape-now:
+	$(COMPOSE) exec app python -m src.realtime_price.scrape_once
+
+rt-interval-60:
+	@echo "⚠️ Démo : passe l'intervalle à 60s (nécessite relance du service)"
+	@powershell -ExecutionPolicy Bypass -Command "(Get-Content .env) -replace '^POLL_INTERVAL_SECONDS=.*','POLL_INTERVAL_SECONDS=60' | Set-Content .env"
+
+rt-interval-300:
+	@echo "✅ Remet l'intervalle à 300s (5min) (nécessite relance du service)"
+	@powershell -ExecutionPolicy Bypass -Command "(Get-Content .env) -replace '^POLL_INTERVAL_SECONDS=.*','POLL_INTERVAL_SECONDS=300' | Set-Content .env"
