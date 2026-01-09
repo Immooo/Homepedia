@@ -189,9 +189,6 @@ def load_history(metric_uid: str, limit: int) -> pd.DataFrame:
 
 
 st.title("⏱️ Temps réel — Prix immobilier (scraping INSEE)")
-st.caption(
-    "Démonstration : scraping + ingestion automatique toutes les X minutes (polling)."
-)
 
 latest = load_latest()
 if latest.empty:
