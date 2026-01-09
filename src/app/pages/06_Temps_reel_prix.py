@@ -4,44 +4,102 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+
 
 st.set_page_config(page_title="Homepedia — Temps réel (prix)", layout="wide")
 
 DB_PATH = os.getenv("DB_PATH", os.path.join("data", "homepedia.db"))
 TZ_PARIS = ZoneInfo("Europe/Paris")
 
-COLS_FR_LATEST = {
-    "metric_uid": "Identifiant métrique",
-    "metric_name": "Nom de la métrique",
-    "geo": "Zone",
-    "unit": "Unité",
-    "period": "Période",
-    "value": "Valeur",
-    "scraped_at_local": "Collecté le (heure Paris)",
-    "scraped_at_utc": "Collecté le (UTC)",
+
+GEO_LABELS = {
+    "IDF": "Île-de-France",
+    "PROVINCE": "Province",
+    "FR": "France",
 }
 
-COLS_FR_HISTORY = {
-    "scraped_at_local": "Collecté le (heure Paris)",
-    "scraped_at_utc": "Collecté le (UTC)",
-    "period": "Période",
-    "value": "Valeur",
+UNIT_LABELS = {
+    "index_base": "Indice (base 100)",
+    "pct": "Variation annuelle (%)",
+}
+
+SERIES_LABELS = {
+    "insee_indices": "INSEE indices",
+    "insee_yoy": "INSEE yoy",
 }
 
 
-def _to_dt_utc(series: pd.Series) -> pd.Series:
-    """
-    Convertit une colonne scraped_at (ISO avec offset, ex: ...+00:00) en datetime UTC.
-    """
-    # utc=True force un tz-aware en UTC, même si la string contient un offset
-    return pd.to_datetime(series, utc=True, errors="coerce")
+def _to_dt_paris(series: pd.Series) -> pd.Series:
+    """Convertit une colonne ISO timestamp en datetime timezone Europe/Paris."""
+    dt_utc = pd.to_datetime(series, utc=True, errors="coerce")
+    return dt_utc.dt.tz_convert(TZ_PARIS)
 
 
-def _format_dt(series: pd.Series) -> pd.Series:
+def _fmt_fr(series_dt: pd.Series) -> pd.Series:
+    """Format FR lisible: jj/mm/aaaa HH:MM:SS"""
+    return series_dt.dt.strftime("%d/%m/%Y %H:%M:%S")
+
+
+def _parse_metric_uid(metric_uid: str) -> tuple[str, str, str]:
     """
-    Format FR lisible: jj/mm/aaaa HH:MM:SS
+    Retourne (series_key, geo_key, segment_key) à partir d'un uid type:
+    - insee_indices:ile_de_france_appartements
+    - insee_yoy:france_maisons
     """
-    return series.dt.strftime("%d/%m/%Y %H:%M:%S")
+    # series_key = avant ":" (insee_indices / insee_yoy)
+    if ":" in metric_uid:
+        series_key, rest = metric_uid.split(":", 1)
+    else:
+        series_key, rest = metric_uid, ""
+
+    rest = rest.strip()
+
+    # segment (appartements/maisons/total)
+    segment = "total"
+    if rest.endswith("_appartements"):
+        segment = "appartements"
+        rest = rest[: -len("_appartements")]
+    elif rest.endswith("_maisons"):
+        segment = "maisons"
+        rest = rest[: -len("_maisons")]
+
+    # geo_key
+    geo_key = rest or "france"
+    geo_key_norm = geo_key.lower()
+
+    if geo_key_norm in ("ile_de_france", "idf"):
+        geo = "IDF"
+    elif geo_key_norm in ("province",):
+        geo = "PROVINCE"
+    elif geo_key_norm in ("france", "fr"):
+        geo = "FR"
+    else:
+        # fallback : on garde la valeur brute
+        geo = geo_key.upper()
+
+    return series_key, geo, segment
+
+
+def _pretty_metric_label(series_key: str, geo: str, segment: str) -> tuple[str, str]:
+    """
+    Retourne:
+    - serie_label: "INSEE indices" / "INSEE yoy"
+    - metric_label: "Île-de-France - appartements" / "France" / etc.
+    """
+    serie_label = SERIES_LABELS.get(series_key, series_key)
+
+    geo_label = GEO_LABELS.get(geo, geo)
+
+    if geo == "FR" and segment == "total":
+        metric_label = "France"
+    elif segment == "total":
+        metric_label = f"{geo_label}"
+    else:
+        metric_label = f"{geo_label} - {segment}"
+
+    return serie_label, metric_label
 
 
 @st.cache_data(ttl=10, show_spinner=False)
@@ -60,15 +118,45 @@ def load_latest() -> pd.DataFrame:
     if df.empty:
         return df
 
-    dt_utc = _to_dt_utc(df["scraped_at"])
-    dt_paris = dt_utc.dt.tz_convert(TZ_PARIS)
+    dt_paris = _to_dt_paris(df["scraped_at"])
+    df["scraped_at_paris_dt"] = dt_paris
+    df["collecte_le"] = _fmt_fr(dt_paris)
 
-    df["scraped_at_utc"] = _format_dt(dt_utc)
-    df["scraped_at_local"] = _format_dt(dt_paris)
-
-    # Affichage plus propre
     df["value"] = pd.to_numeric(df["value"], errors="coerce")
-    return df
+
+    # Normalisation + labels propres
+    rows = []
+    for _, r in df.iterrows():
+        series_key, geo_from_uid, segment = _parse_metric_uid(str(r["metric_uid"]))
+        serie_label, metric_label = _pretty_metric_label(
+            series_key, geo_from_uid, segment
+        )
+
+        unit_label = UNIT_LABELS.get(str(r["unit"]), str(r["unit"]))
+
+        rows.append(
+            {
+                "Série": serie_label,
+                "Métrique": metric_label,
+                "Valeur": r["value"],
+                "Unité": unit_label,
+                "Collecté le (heure Paris)": r["collecte_le"],
+                "_metric_uid": r["metric_uid"],
+                "_series_key": series_key,
+                "_unit": r["unit"],
+                "_geo": geo_from_uid,
+                "_segment": segment,
+                "_collecte_dt": r["scraped_at_paris_dt"],
+            }
+        )
+
+    out = pd.DataFrame(rows)
+
+    # Format valeur plus joli (sans forcer l’unité dans la string)
+    # Indices -> 1 décimale, % -> 1 décimale
+    out["Valeur"] = out["Valeur"].round(1)
+
+    return out
 
 
 @st.cache_data(ttl=10, show_spinner=False)
@@ -90,15 +178,13 @@ def load_history(metric_uid: str, limit: int) -> pd.DataFrame:
     if df.empty:
         return df
 
-    dt_utc = _to_dt_utc(df["scraped_at"])
-    dt_paris = dt_utc.dt.tz_convert(TZ_PARIS)
+    dt_paris = _to_dt_paris(df["scraped_at"])
+    df["collecte_dt"] = dt_paris
+    df["collecte_le"] = _fmt_fr(dt_paris)
+    df["value"] = pd.to_numeric(df["value"], errors="coerce").round(1)
 
-    df["scraped_at_utc"] = _format_dt(dt_utc)
-    df["scraped_at_local"] = _format_dt(dt_paris)
-
-    df["value"] = pd.to_numeric(df["value"], errors="coerce")
-    # Pour le graphique : trier du plus ancien au plus récent
-    df = df.sort_values("scraped_at_local")
+    # ordre chronologique pour courbe
+    df = df.sort_values("collecte_dt")
     return df
 
 
@@ -114,57 +200,35 @@ if latest.empty:
     )
     st.stop()
 
-# ---- KPIs ----
-col1, col2, col3 = st.columns(3)
-col1.metric("Métriques suivies", str(len(latest)))
+# KPI dernier scrape (Paris)
+last_dt = latest["_collecte_dt"].max()
+st.metric(
+    "Dernier scrape (heure Paris)",
+    last_dt.strftime("%d/%m/%Y %H:%M:%S") if pd.notna(last_dt) else "—",
+)
 
-last_paris = latest["scraped_at_local"].max()
-last_utc = latest["scraped_at_utc"].max()
-col2.metric("Dernier scrape (heure Paris)", str(last_paris))
-col3.metric("Dernier scrape (UTC)", str(last_utc))
-
-# ---- Table latest ----
 st.subheader("Dernières valeurs (table)")
+table_cols = ["Série", "Métrique", "Valeur", "Unité", "Collecté le (heure Paris)"]
+st.dataframe(latest[table_cols], use_container_width=True)
 
-show_utc = st.toggle("Afficher aussi la colonne UTC", value=False)
-
-latest_display = latest.copy()
-
-# Garder les colonnes utiles + ordre
-cols = [
-    "metric_uid",
-    "metric_name",
-    "geo",
-    "unit",
-    "period",
-    "value",
-    "scraped_at_local",
-]
-if show_utc:
-    cols.append("scraped_at_utc")
-
-latest_display = latest_display[cols].rename(columns=COLS_FR_LATEST)
-
-st.dataframe(latest_display, use_container_width=True)
-
-# ---- Historique ----
 st.subheader("Historique (courbe)")
 
-# selectbox lisible : afficher metric_name (uid en petit)
+# Select: même logique que ta liste attendue, propre et stable
 options = (
-    latest[["metric_uid", "metric_name"]]
+    latest[["Série", "Métrique", "_metric_uid", "Unité"]]
     .drop_duplicates()
-    .sort_values(["metric_name", "metric_uid"])
+    .sort_values(["Série", "Métrique"])
     .to_dict("records")
 )
 
 selected = st.selectbox(
     "Choisir une métrique",
     options,
-    format_func=lambda x: f"{x['metric_name']}  —  {x['metric_uid']}",
+    format_func=lambda x: f"{x['Série']} — {x['Métrique']}",
 )
 
-metric_uid = selected["metric_uid"]
+metric_uid = selected["_metric_uid"]
+unit_label = selected["Unité"]
 
 limit = st.slider(
     "Nombre de points d'historique", min_value=10, max_value=5000, value=200, step=10
@@ -175,24 +239,27 @@ hist = load_history(metric_uid, limit)
 if hist.empty:
     st.info("Pas d'historique pour cette métrique.")
 else:
-    hist_display = hist.copy()
-    cols_h = ["scraped_at_local", "period", "value"]
-    if show_utc:
-        cols_h.insert(1, "scraped_at_utc")
+    st.caption(f"Unité : {unit_label}")
 
     st.dataframe(
-        hist_display[cols_h].rename(columns=COLS_FR_HISTORY).tail(30),
+        hist[["collecte_le", "value"]]
+        .rename(
+            columns={
+                "collecte_le": "Collecté le (heure Paris)",
+                "value": "Valeur",
+            }
+        )
+        .tail(30),
         use_container_width=True,
     )
 
-    # Graph : axe temps en heure Paris
-    chart_df = hist[["scraped_at_local", "value"]].copy()
-    # Reconvertir "scraped_at_local" string -> datetime pour un axe propre
-    chart_df["scraped_at_local"] = pd.to_datetime(
-        chart_df["scraped_at_local"], format="%d/%m/%Y %H:%M:%S", errors="coerce"
-    )
-    chart_df = chart_df.dropna(subset=["scraped_at_local"]).set_index(
-        "scraped_at_local"
-    )
+    # Graph matplotlib (axe temps FR)
+    fig, ax = plt.subplots()
+    ax.plot(hist["collecte_dt"], hist["value"])
+    ax.set_xlabel("Date / heure (Paris)")
+    ax.set_ylabel(f"Valeur — {unit_label}")
 
-    st.line_chart(chart_df["value"])
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%d/%m %H:%M"))
+    fig.autofmt_xdate(rotation=45)
+
+    st.pyplot(fig, use_container_width=True)
