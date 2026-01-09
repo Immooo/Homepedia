@@ -1,8 +1,9 @@
 param(
   [Parameter(Mandatory = $true)]
   [ValidateSet(
-    'build','rebuild','up','down','logs','ps','sh-app',
-    'etl-ls','etl-valeurs','etl-insee','etl-spark','etl-agg','etl-export','etl-schema','etl-rename-fr','etl-all'
+    'build', 'rebuild', 'up', 'down', 'logs', 'ps', 'sh-app',
+    'etl-ls', 'etl-valeurs', 'etl-insee', 'etl-spark', 'etl-agg', 'etl-export', 'etl-schema', 'etl-rename-fr', 'etl-all',
+    'rt-ls', 'rt-up', 'rt-down', 'rt-restart', 'rt-logs', 'rt-ps', 'rt-scrape-now', 'rt-interval-60', 'rt-interval-300'
   )]
   [string]$cmd
 )
@@ -10,7 +11,6 @@ param(
 function Invoke-Compose {
   [CmdletBinding()]
   param(
-    # IMPORTANT: les args doivent être le 1er param pour éviter que "exec" se lie au mauvais paramètre
     [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
     [string[]]$Args,
 
@@ -21,21 +21,48 @@ function Invoke-Compose {
   process {
     if ($PSBoundParameters.ContainsKey('InputObject')) {
       $InputObject | & docker compose -f infra/docker-compose.yml --env-file .env @Args
-    } else {
+    }
+    else {
       & docker compose -f infra/docker-compose.yml --env-file .env @Args
     }
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   }
 }
 
+function Set-Or-Replace-EnvVar {
+  param(
+    [Parameter(Mandatory = $true)][string]$Key,
+    [Parameter(Mandatory = $true)][string]$Value
+  )
+
+  if (-not (Test-Path ".env")) {
+    New-Item -ItemType File -Path ".env" | Out-Null
+  }
+
+  $content = Get-Content ".env" -ErrorAction SilentlyContinue
+  $pattern = "^\s*$([regex]::Escape($Key))\s*="
+
+  if ($content -match $pattern) {
+    $content = $content | ForEach-Object {
+      if ($_ -match $pattern) { "$Key=$Value" } else { $_ }
+    }
+  }
+  else {
+    $content = @($content + "$Key=$Value")
+  }
+
+  Set-Content ".env" $content
+  Write-Host "OK .env: $Key=$Value"
+}
+
 switch ($cmd) {
-  'build'   { Invoke-Compose build }
+  'build' { Invoke-Compose build }
   'rebuild' { Invoke-Compose build '--no-cache' }
-  'up'      { Invoke-Compose up '-d' }
-  'down'    { Invoke-Compose down }
-  'logs'    { Invoke-Compose logs '-f' '--tail=200' }
-  'ps'      { Invoke-Compose ps }
-  'sh-app'  { Invoke-Compose exec app bash }
+  'up' { Invoke-Compose up '-d' }
+  'down' { Invoke-Compose down }
+  'logs' { Invoke-Compose logs '-f' '--tail=200' }
+  'ps' { Invoke-Compose ps }
+  'sh-app' { Invoke-Compose exec app bash }
 
   'etl-ls' {
     Write-Host "ETL disponibles : etl-insee, etl-valeurs, etl-spark, etl-agg, etl-export, etl-schema, etl-rename-fr, etl-all"
@@ -48,11 +75,11 @@ switch ($cmd) {
   }
 
   'etl-spark' { Invoke-Compose exec app bash '-lc' 'set -e; PYTHONPATH=/app python -m src.backend.spark_dvf_analysis' }
-  'etl-agg'   { Invoke-Compose exec app bash '-lc' 'set -e; PYTHONPATH=/app python -m src.backend.aggregate_by_region' }
-  'etl-export'{ Invoke-Compose exec app bash '-lc' 'set -e; PYTHONPATH=/app python src/etl/sqlite_to_mongo_all_tables.py' }
+  'etl-agg' { Invoke-Compose exec app bash '-lc' 'set -e; PYTHONPATH=/app python -m src.backend.aggregate_by_region' }
+  'etl-export' { Invoke-Compose exec app bash '-lc' 'set -e; PYTHONPATH=/app python src/etl/sqlite_to_mongo_all_tables.py' }
 
   'etl-schema' {
-@'
+    @'
 import os, sqlite3
 db = os.environ.get("DB_PATH", "data/homepedia.db")
 con = sqlite3.connect(db)
@@ -77,7 +104,7 @@ con.close()
   }
 
   'etl-rename-fr' {
-@'
+    @'
 import os, sqlite3
 db = os.environ.get("DB_PATH", "data/homepedia.db")
 con = sqlite3.connect(db)
@@ -105,5 +132,30 @@ print("Done.")
     & powershell -ExecutionPolicy Bypass -File infra\make.ps1 etl-spark
     & powershell -ExecutionPolicy Bypass -File infra\make.ps1 etl-agg
     & powershell -ExecutionPolicy Bypass -File infra\make.ps1 etl-export
+  }
+
+  # =========================
+  # Realtime (polling scraping)
+  # =========================
+
+  'rt-ls' {
+    Write-Host "Realtime : rt-up, rt-down, rt-restart, rt-logs, rt-ps, rt-scrape-now, rt-interval-60, rt-interval-300"
+  }
+
+  'rt-up' { Invoke-Compose up '-d' 'realtime-price' }
+  'rt-down' { Invoke-Compose stop 'realtime-price' }
+  'rt-restart' { Invoke-Compose restart 'realtime-price' }
+  'rt-logs' { Invoke-Compose logs '-f' '--tail=200' 'realtime-price' }
+  'rt-ps' { Invoke-Compose ps 'realtime-price' }
+  'rt-scrape-now' { Invoke-Compose exec app python '-m' 'src.realtime_price.scrape_once' }
+
+  'rt-interval-60' {
+    Set-Or-Replace-EnvVar -Key 'POLL_INTERVAL_SECONDS' -Value '60'
+    Write-Host "Relance ensuite: powershell -File infra\make.ps1 rt-restart"
+  }
+
+  'rt-interval-300' {
+    Set-Or-Replace-EnvVar -Key 'POLL_INTERVAL_SECONDS' -Value '300'
+    Write-Host "Relance ensuite: powershell -File infra\make.ps1 rt-restart"
   }
 }
