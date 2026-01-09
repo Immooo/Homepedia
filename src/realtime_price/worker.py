@@ -53,7 +53,7 @@ def run_once(cfg: RealtimePriceConfig) -> None:
         mongo_store.insert_raw_run(
             raw_col, run_id, cfg.source_url, scraped_at=started_at, raw_debug=raw_debug
         )
-        mongo_store.insert_observations(obs_col, points)
+        mongo_store.upsert_observations(obs_col, points)
         mongo_store.upsert_latest(latest_col, points)
 
         client.close()
