@@ -214,6 +214,7 @@ def scrape_insee_housing_prices(source_url: str, timeout_seconds: int = 20) -> t
     raw_debug["best_indices"] = {"score": best_indices_score, "table_index": best_indices_i}
     raw_debug["best_yoy"] = {"score": best_yoy_score, "table_index": best_yoy_i}
 
+    # thresholds: if score too low, skip
     points: list[PricePoint] = []
 
     def parse_table(table, kind: str) -> None:
@@ -223,10 +224,15 @@ def scrape_insee_housing_prices(source_url: str, timeout_seconds: int = 20) -> t
 
         hdrs = _extract_headers(table)
 
+        # Align headers to row values:
+        # row = [period, v1, v2, ...]
+        # hdrs might be longer/shorter; we take last N headers for values if possible.
         values = row[1:]
         if len(hdrs) >= len(values) + 1:
+            # typical: hdrs includes the first label for period column
             col_labels = hdrs[-len(values):]
         else:
+            # fallback: generate labels col_1, col_2...
             col_labels = [f"col_{i+1}" for i in range(len(values))]
 
         unit = "pct" if kind == "yoy" else "index_base"
@@ -260,6 +266,7 @@ def scrape_insee_housing_prices(source_url: str, timeout_seconds: int = 20) -> t
 
     raw_debug["points_count"] = len(points)
 
+    # Add a tiny sample of headers for debugging
     try:
         raw_debug["indices_headers_sample"] = _extract_headers(best_indices)[:12]
         raw_debug["yoy_headers_sample"] = _extract_headers(best_yoy)[:12]
