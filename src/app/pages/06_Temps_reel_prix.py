@@ -1,262 +1,387 @@
 import os
 import sqlite3
+import hashlib
+from dataclasses import dataclass
+from datetime import datetime, UTC
 from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
+
+try:
+    import altair as alt
+except Exception:
+    alt = None
+
+try:
+    from streamlit_autorefresh import st_autorefresh
+except Exception:
+    st_autorefresh = None
 
 
-st.set_page_config(page_title="Homepedia — Temps réel (prix)", layout="wide")
+PARIS_TZ = ZoneInfo("Europe/Paris")
 
-DB_PATH = os.getenv("DB_PATH", os.path.join("data", "homepedia.db"))
-TZ_PARIS = ZoneInfo("Europe/Paris")
+DB_PATH = os.getenv("DB_PATH", "/app/data/homepedia.db")
+POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "300"))
 
+# UI refresh (par défaut = fréquence de collecte)
+UI_REFRESH_SECONDS = int(
+    os.getenv("REALTIME_UI_REFRESH_SECONDS", str(POLL_INTERVAL_SECONDS))
+)
+DEFAULT_HISTORY_LIMIT = int(os.getenv("REALTIME_UI_HISTORY_LIMIT", "300"))
 
-GEO_LABELS = {
-    "IDF": "Île-de-France",
-    "PROVINCE": "Province",
-    "FR": "France",
-}
-
-UNIT_LABELS = {
-    "index_base": "Indice (base 100)",
-    "pct": "Variation annuelle (%)",
-}
-
-SERIES_LABELS = {
-    "insee_indices": "INSEE indices",
-    "insee_yoy": "INSEE yoy",
-}
-
-
-def _to_dt_paris(series: pd.Series) -> pd.Series:
-    """Convertit une colonne ISO timestamp en datetime timezone Europe/Paris."""
-    dt_utc = pd.to_datetime(series, utc=True, errors="coerce")
-    return dt_utc.dt.tz_convert(TZ_PARIS)
+# Mock UI : fait "bouger" la courbe sans modifier les données stockées
+DEFAULT_UI_MOCK = os.getenv("REALTIME_UI_MOCK", "1").strip().lower() not in (
+    "0",
+    "false",
+    "no",
+    "off",
+)
+MOCK_JITTER_INDEX = float(
+    os.getenv("REALTIME_UI_MOCK_JITTER_INDEX", "0.6")
+)  # indices base 100
+MOCK_JITTER_YOY = float(
+    os.getenv("REALTIME_UI_MOCK_JITTER_YOY", "0.25")
+)  # variation annuelle %
 
 
-def _fmt_fr(series_dt: pd.Series) -> pd.Series:
-    """Format FR lisible: jj/mm/aaaa HH:MM:SS"""
-    return series_dt.dt.strftime("%d/%m/%Y %H:%M:%S")
+def _parse_iso_to_paris_dt(iso_str: str) -> datetime:
+    if not iso_str:
+        return datetime.now(PARIS_TZ)
+    s = iso_str.strip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    dt = datetime.fromisoformat(s)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(PARIS_TZ)
 
 
-def _parse_metric_uid(metric_uid: str) -> tuple[str, str, str]:
-    """
-    Retourne (series_key, geo_key, segment_key) à partir d'un uid type:
-    - insee_indices:ile_de_france_appartements
-    - insee_yoy:france_maisons
-    """
-    # series_key = avant ":" (insee_indices / insee_yoy)
+def _to_py_dt(x):
+    return x.to_pydatetime() if hasattr(x, "to_pydatetime") else x
+
+
+def _fmt_dt_paris(x) -> str:
+    dt = _to_py_dt(x)
+    return dt.astimezone(PARIS_TZ).strftime("%d/%m/%Y %H:%M:%S")
+
+
+def _human_delta(seconds: float) -> str:
+    seconds = max(0, int(seconds))
+    if seconds < 60:
+        return f"{seconds} s"
+    minutes, s = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes} min {s:02d} s"
+    hours, m = divmod(minutes, 60)
+    if hours < 24:
+        return f"{hours} h {m:02d} min"
+    days, h = divmod(hours, 24)
+    return f"{days} j {h:02d} h"
+
+
+@dataclass(frozen=True)
+class MetricInfo:
+    metric_uid: str
+    family: str  # 'indices' | 'yoy' | 'autre'
+    zone: str
+    type_bien: str  # 'appartements'|'maisons'|'' (ensemble)
+    label: str  # label "selectbox"
+    unit_text: str  # pour le graphe
+    value_header: str  # pour le tableau
+    jitter_amp: float  # mock UI amplitude
+
+
+def _clean_words(s: str) -> str:
+    return s.replace("_", " ").strip()
+
+
+def _metric_info(metric_uid: str) -> MetricInfo:
+    family = "autre"
+    zone = ""
+    type_bien = ""
+    label = metric_uid
+    unit_text = "valeur"
+    value_header = "Valeur"
+    jitter_amp = 0.2
+
     if ":" in metric_uid:
-        series_key, rest = metric_uid.split(":", 1)
+        prefix, rest = metric_uid.split(":", 1)
     else:
-        series_key, rest = metric_uid, ""
+        prefix, rest = metric_uid, ""
 
-    rest = rest.strip()
+    if prefix == "insee_indices":
+        family = "indices"
+        unit_text = "Indice (base 100)"
+        value_header = "Valeur (indice base 100)"
+        jitter_amp = MOCK_JITTER_INDEX
 
-    # segment (appartements/maisons/total)
-    segment = "total"
-    if rest.endswith("_appartements"):
-        segment = "appartements"
-        rest = rest[: -len("_appartements")]
-    elif rest.endswith("_maisons"):
-        segment = "maisons"
-        rest = rest[: -len("_maisons")]
+        if rest.startswith("ile_de_france_"):
+            zone = "Île-de-France"
+            type_bien = _clean_words(rest[len("ile_de_france_") :])
+        elif rest.startswith("province_"):
+            zone = "Province"
+            type_bien = _clean_words(rest[len("province_") :])
+        else:
+            zone = _clean_words(rest)
+            type_bien = ""
 
-    # geo_key
-    geo_key = rest or "france"
-    geo_key_norm = geo_key.lower()
+        label = f"INSEE indices — {zone}" + (f" - {type_bien}" if type_bien else "")
 
-    if geo_key_norm in ("ile_de_france", "idf"):
-        geo = "IDF"
-    elif geo_key_norm in ("province",):
-        geo = "PROVINCE"
-    elif geo_key_norm in ("france", "fr"):
-        geo = "FR"
-    else:
-        # fallback : on garde la valeur brute
-        geo = geo_key.upper()
+    elif prefix == "insee_yoy":
+        family = "yoy"
+        unit_text = "Variation annuelle (%)"
+        value_header = "Valeur (variation annuelle %)"
+        jitter_amp = MOCK_JITTER_YOY
 
-    return series_key, geo, segment
+        if rest == "france":
+            zone = "France"
+            type_bien = ""
+        elif rest.startswith("france_"):
+            zone = "France"
+            type_bien = _clean_words(rest[len("france_") :])
+        else:
+            zone = _clean_words(rest)
+            type_bien = ""
 
+        label = f"INSEE yoy — {zone}" + (f" - {type_bien}" if type_bien else "")
 
-def _pretty_metric_label(series_key: str, geo: str, segment: str) -> tuple[str, str]:
-    """
-    Retourne:
-    - serie_label: "INSEE indices" / "INSEE yoy"
-    - metric_label: "Île-de-France - appartements" / "France" / etc.
-    """
-    serie_label = SERIES_LABELS.get(series_key, series_key)
-
-    geo_label = GEO_LABELS.get(geo, geo)
-
-    if geo == "FR" and segment == "total":
-        metric_label = "France"
-    elif segment == "total":
-        metric_label = f"{geo_label}"
-    else:
-        metric_label = f"{geo_label} - {segment}"
-
-    return serie_label, metric_label
+    return MetricInfo(
+        metric_uid=metric_uid,
+        family=family,
+        zone=zone,
+        type_bien=type_bien,
+        label=label,
+        unit_text=unit_text,
+        value_header=value_header,
+        jitter_amp=jitter_amp,
+    )
 
 
-@st.cache_data(ttl=10, show_spinner=False)
-def load_latest() -> pd.DataFrame:
+def _stable_noise(key: str) -> float:
+    # bruit stable dans [-1 ; +1] : ne “bouge” pas à chaque refresh,
+    # mais chaque nouveau point (nouveau scraped_at) aura une valeur différente.
+    h = hashlib.md5(key.encode("utf-8")).hexdigest()
+    n = int(h[:8], 16) / 0xFFFFFFFF
+    return (n - 0.5) * 2.0
+
+
+def _read_sqlite(query: str, params: tuple = ()) -> pd.DataFrame:
     con = sqlite3.connect(DB_PATH)
-    df = pd.read_sql_query(
+    try:
+        df = pd.read_sql_query(query, con, params=params)
+    finally:
+        con.close()
+    return df
+
+
+def _load_latest() -> pd.DataFrame:
+    df = _read_sqlite(
         """
         SELECT metric_uid, metric_name, geo, unit, period, value, scraped_at
         FROM realtime_price_latest
-        ORDER BY metric_uid
-        """,
-        con,
+        """
     )
-    con.close()
-
     if df.empty:
         return df
 
-    dt_paris = _to_dt_paris(df["scraped_at"])
-    df["scraped_at_paris_dt"] = dt_paris
-    df["collecte_le"] = _fmt_fr(dt_paris)
+    df["scraped_at_paris"] = pd.to_datetime(
+        df["scraped_at"].apply(lambda s: _parse_iso_to_paris_dt(s).isoformat())
+    )
 
-    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    infos = df["metric_uid"].apply(_metric_info)
+    df["famille"] = infos.apply(lambda x: x.family)
+    df["zone"] = infos.apply(lambda x: x.zone)
+    df["type_bien"] = infos.apply(lambda x: x.type_bien if x.type_bien else "ensemble")
+    df["label"] = infos.apply(lambda x: x.label)
+    df["unit_text"] = infos.apply(lambda x: x.unit_text)
+    df["value_header"] = infos.apply(lambda x: x.value_header)
+    df["jitter_amp"] = infos.apply(lambda x: x.jitter_amp)
 
-    # Normalisation + labels propres
-    rows = []
-    for _, r in df.iterrows():
-        series_key, geo_from_uid, segment = _parse_metric_uid(str(r["metric_uid"]))
-        serie_label, metric_label = _pretty_metric_label(
-            series_key, geo_from_uid, segment
-        )
-
-        unit_label = UNIT_LABELS.get(str(r["unit"]), str(r["unit"]))
-
-        rows.append(
-            {
-                "Série": serie_label,
-                "Métrique": metric_label,
-                "Valeur": r["value"],
-                "Unité": unit_label,
-                "Collecté le (heure Paris)": r["collecte_le"],
-                "_metric_uid": r["metric_uid"],
-                "_series_key": series_key,
-                "_unit": r["unit"],
-                "_geo": geo_from_uid,
-                "_segment": segment,
-                "_collecte_dt": r["scraped_at_paris_dt"],
-            }
-        )
-
-    out = pd.DataFrame(rows)
-
-    # Format valeur plus joli (sans forcer l’unité dans la string)
-    # Indices -> 1 décimale, % -> 1 décimale
-    out["Valeur"] = out["Valeur"].round(1)
-
-    return out
+    return df
 
 
-@st.cache_data(ttl=10, show_spinner=False)
-def load_history(metric_uid: str, limit: int) -> pd.DataFrame:
-    con = sqlite3.connect(DB_PATH)
-    df = pd.read_sql_query(
+def _load_history(metric_uid: str, limit: int) -> pd.DataFrame:
+    df = _read_sqlite(
         """
-        SELECT scraped_at, period, value
+        SELECT metric_uid, period, value, scraped_at
         FROM realtime_price_history
         WHERE metric_uid = ?
         ORDER BY scraped_at DESC
         LIMIT ?
         """,
-        con,
-        params=(metric_uid, limit),
+        (metric_uid, limit),
     )
-    con.close()
-
     if df.empty:
         return df
 
-    dt_paris = _to_dt_paris(df["scraped_at"])
-    df["collecte_dt"] = dt_paris
-    df["collecte_le"] = _fmt_fr(dt_paris)
-    df["value"] = pd.to_numeric(df["value"], errors="coerce").round(1)
+    df["scraped_at_paris"] = pd.to_datetime(
+        df["scraped_at"].apply(lambda s: _parse_iso_to_paris_dt(s).isoformat())
+    )
 
-    # ordre chronologique pour courbe
-    df = df.sort_values("collecte_dt")
+    df = df.sort_values("scraped_at_paris")
     return df
 
 
-st.title("⏱️ Temps réel — Prix immobilier (scraping INSEE)")
+# =========================
+# UI
+# =========================
+st.header("📡 Temps réel — Prix immobiliers (INSEE)")
+st.caption("Affichage en **heure de Paris** (Europe/Paris).")
 
-latest = load_latest()
+if st_autorefresh:
+    st_autorefresh(interval=UI_REFRESH_SECONDS * 1000, key="rt_price_refresh")
+
+latest = _load_latest()
 if latest.empty:
     st.warning(
-        "Aucune donnée temps réel pour le moment. Lance le worker `realtime-price` ou `rt-scrape-now`."
+        "Aucune donnée trouvée. Lance un run (`make rt-scrape-now`) ou démarre le worker (`make rt-up`)."
     )
     st.stop()
 
-# KPI dernier scrape (Paris)
-last_dt = latest["_collecte_dt"].max()
-st.metric(
-    "Dernier scrape (heure Paris)",
-    last_dt.strftime("%d/%m/%Y %H:%M:%S") if pd.notna(last_dt) else "—",
+last_dt = latest["scraped_at_paris"].max()
+now_dt = datetime.now(PARIS_TZ)
+
+periods = sorted(set(latest["period"].dropna().astype(str).tolist()))
+period_txt = periods[-1] if periods else "n/a"
+
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Fréquence de collecte", f"{POLL_INTERVAL_SECONDS} s")
+c2.metric("Dernière collecte (Paris)", _fmt_dt_paris(last_dt))
+c3.metric(
+    "Dernier run",
+    f"il y a {_human_delta((now_dt - _to_py_dt(last_dt)).total_seconds())}",
 )
+c4.metric("Période INSEE (dernière)", period_txt)
 
-st.subheader("Dernières valeurs (table)")
-table_cols = ["Série", "Métrique", "Valeur", "Unité", "Collecté le (heure Paris)"]
-st.dataframe(latest[table_cols], use_container_width=True)
+st.divider()
 
-st.subheader("Historique (courbe)")
+st.subheader("Dernières valeurs")
 
-# Select: même logique que ta liste attendue, propre et stable
-options = (
-    latest[["Série", "Métrique", "_metric_uid", "Unité"]]
-    .drop_duplicates()
-    .sort_values(["Série", "Métrique"])
-    .to_dict("records")
-)
+indices_df = latest[latest["famille"] == "indices"].copy()
+yoy_df = latest[latest["famille"] == "yoy"].copy()
 
-selected = st.selectbox(
-    "Choisir une métrique",
-    options,
-    format_func=lambda x: f"{x['Série']} — {x['Métrique']}",
-)
 
-metric_uid = selected["_metric_uid"]
-unit_label = selected["Unité"]
+def _prep_table(df: pd.DataFrame, value_header: str) -> pd.DataFrame:
+    out = df[["zone", "type_bien", "value"]].copy()
+    out.rename(
+        columns={"zone": "Zone", "type_bien": "Type de bien", "value": value_header},
+        inplace=True,
+    )
+    return out.sort_values(["Zone", "Type de bien"])
 
-limit = st.slider(
-    "Nombre de points d'historique", min_value=10, max_value=5000, value=200, step=10
-)
 
-hist = load_history(metric_uid, limit)
-
-if hist.empty:
-    st.info("Pas d'historique pour cette métrique.")
-else:
-    st.caption(f"Unité : {unit_label}")
-
+if not indices_df.empty:
+    st.markdown("**INSEE indices** — *Indice (base 100)*")
     st.dataframe(
-        hist[["collecte_le", "value"]]
-        .rename(
-            columns={
-                "collecte_le": "Collecté le (heure Paris)",
-                "value": "Valeur",
-            }
-        )
-        .tail(30),
+        _prep_table(indices_df, "Valeur (indice base 100)"),
+        hide_index=True,
         use_container_width=True,
     )
+else:
+    st.info("Aucune donnée 'INSEE indices'.")
 
-    # Graph matplotlib (axe temps FR)
-    fig, ax = plt.subplots()
-    ax.plot(hist["collecte_dt"], hist["value"])
-    ax.set_xlabel("Date / heure (Paris)")
-    ax.set_ylabel(f"Valeur — {unit_label}")
+if not yoy_df.empty:
+    st.markdown("**INSEE yoy** — *Variation annuelle (%)*")
+    st.dataframe(
+        _prep_table(yoy_df, "Valeur (variation annuelle %)"),
+        hide_index=True,
+        use_container_width=True,
+    )
+else:
+    st.info("Aucune donnée 'INSEE yoy'.")
 
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%d/%m %H:%M"))
-    fig.autofmt_xdate(rotation=45)
+st.divider()
 
-    st.pyplot(fig, use_container_width=True)
+st.subheader("Historique")
+
+labels = sorted(latest["label"].unique().tolist())
+label_to_uid = {
+    _metric_info(uid).label: uid for uid in latest["metric_uid"].unique().tolist()
+}
+
+preferred_order = [
+    "INSEE indices — Province - appartements",
+    "INSEE indices — Île-de-France - appartements",
+    "INSEE indices — Province - maisons",
+    "INSEE indices — Île-de-France - maisons",
+    "INSEE yoy — France",
+    "INSEE yoy — France - appartements",
+    "INSEE yoy — France - maisons",
+]
+ordered = [x for x in preferred_order if x in labels] + [
+    x for x in labels if x not in preferred_order
+]
+
+selected_label = st.selectbox("Choisir une métrique", options=ordered, index=0)
+selected_uid = label_to_uid.get(selected_label, latest["metric_uid"].iloc[0])
+info = _metric_info(selected_uid)
+
+left, right = st.columns([1, 1])
+with left:
+    limit = st.slider(
+        "Nombre de points affichés",
+        min_value=30,
+        max_value=600,
+        value=min(DEFAULT_HISTORY_LIMIT, 600),
+        step=10,
+    )
+with right:
+    ui_mock = st.checkbox(
+        "Mode mock : courbe animée (démo)",
+        value=DEFAULT_UI_MOCK,
+        help="Ajoute un léger bruit *stable* (par point) pour que la courbe bouge à chaque nouvelle collecte, sans modifier la DB.",
+    )
+
+hist = _load_history(selected_uid, limit=limit)
+if hist.empty:
+    st.info("Pas encore d'historique pour cette métrique.")
+    st.stop()
+
+hist["valeur_affichee"] = hist["value"].astype(float)
+
+if ui_mock:
+    amp = info.jitter_amp
+    hist["valeur_affichee"] = hist.apply(
+        lambda r: float(r["value"])
+        + _stable_noise(f"{selected_uid}|{r['scraped_at']}") * amp,
+        axis=1,
+    )
+
+plot_df = hist[["scraped_at_paris", "value", "valeur_affichee"]].copy()
+plot_df["Heure (Paris)"] = plot_df["scraped_at_paris"].dt.strftime("%H:%M:%S")
+plot_df["Date"] = plot_df["scraped_at_paris"].dt.strftime("%d/%m/%Y")
+plot_df.rename(
+    columns={"valeur_affichee": "Valeur affichée", "value": "Valeur brute"},
+    inplace=True,
+)
+
+chart_title = f"{selected_label} — {info.unit_text}"
+
+if alt is not None:
+    base = alt.Chart(plot_df).encode(
+        x=alt.X(
+            "scraped_at_paris:T",
+            title="Heure de collecte (Paris)",
+            axis=alt.Axis(format="%H:%M:%S"),
+        ),
+        y=alt.Y("Valeur affichée:Q", title=info.unit_text),
+        tooltip=[
+            alt.Tooltip("Date:N"),
+            alt.Tooltip("Heure (Paris):N"),
+            alt.Tooltip("Valeur brute:Q", format=".3f"),
+            alt.Tooltip("Valeur affichée:Q", format=".3f"),
+        ],
+    )
+    st.altair_chart(
+        (base.mark_line() + base.mark_circle(size=30)).properties(
+            title=chart_title, height=320
+        ),
+        use_container_width=True,
+    )
+else:
+    st.line_chart(plot_df.set_index("scraped_at_paris")[["Valeur affichée"]])
+
+st.caption(
+    f"Dernier point : {_fmt_dt_paris(hist['scraped_at_paris'].max())} — heure de Paris."
+)
