@@ -2,10 +2,6 @@ x-env: &default-env
   STREAMLIT_SERVER_PORT: ${STREAMLIT_SERVER_PORT:-8501}
   DB_PATH: ${DB_PATH:-/app/data/homepedia.db}
   PYTHONUNBUFFERED: "1"
-
-  POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-300}
-  REALTIME_REQUEST_TIMEOUT_SECONDS: ${REALTIME_REQUEST_TIMEOUT_SECONDS:-20}
-
   TZ: ${TZ:-Europe/Paris}
 
 services:
@@ -36,7 +32,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # Worker "temps réel"
   realtime-price:
     image: homepedia-app:latest
     container_name: homepedia-realtime-price
