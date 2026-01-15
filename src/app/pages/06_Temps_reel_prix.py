@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import hashlib
+import math
 from dataclasses import dataclass
 from datetime import datetime, UTC
 from zoneinfo import ZoneInfo
@@ -30,18 +31,20 @@ UI_REFRESH_SECONDS = int(
 )
 DEFAULT_HISTORY_LIMIT = int(os.getenv("REALTIME_UI_HISTORY_LIMIT", "300"))
 
-# Mock UI : fait "bouger" la courbe sans modifier les données stockées
+# Mock UI (démo): fait "bouger" la courbe sans modifier les données stockées
 DEFAULT_UI_MOCK = os.getenv("REALTIME_UI_MOCK", "1").strip().lower() not in (
     "0",
     "false",
     "no",
     "off",
 )
-MOCK_JITTER_INDEX = float(
-    os.getenv("REALTIME_UI_MOCK_JITTER_INDEX", "0.6")
+
+# Par défaut on met plus fort pour que ce soit VISIBLE
+MOCK_JITTER_INDEX_DEFAULT = float(
+    os.getenv("REALTIME_UI_MOCK_JITTER_INDEX", "3.0")
 )  # indices base 100
-MOCK_JITTER_YOY = float(
-    os.getenv("REALTIME_UI_MOCK_JITTER_YOY", "0.25")
+MOCK_JITTER_YOY_DEFAULT = float(
+    os.getenv("REALTIME_UI_MOCK_JITTER_YOY", "1.0")
 )  # variation annuelle %
 
 
@@ -89,7 +92,7 @@ class MetricInfo:
     label: str  # label "selectbox"
     unit_text: str  # pour le graphe
     value_header: str  # pour le tableau
-    jitter_amp: float  # mock UI amplitude
+    jitter_default: float
 
 
 def _clean_words(s: str) -> str:
@@ -101,9 +104,9 @@ def _metric_info(metric_uid: str) -> MetricInfo:
     zone = ""
     type_bien = ""
     label = metric_uid
-    unit_text = "valeur"
+    unit_text = "Valeur"
     value_header = "Valeur"
-    jitter_amp = 0.2
+    jitter_default = 0.2
 
     if ":" in metric_uid:
         prefix, rest = metric_uid.split(":", 1)
@@ -114,7 +117,7 @@ def _metric_info(metric_uid: str) -> MetricInfo:
         family = "indices"
         unit_text = "Indice (base 100)"
         value_header = "Valeur (indice base 100)"
-        jitter_amp = MOCK_JITTER_INDEX
+        jitter_default = MOCK_JITTER_INDEX_DEFAULT
 
         if rest.startswith("ile_de_france_"):
             zone = "Île-de-France"
@@ -132,7 +135,7 @@ def _metric_info(metric_uid: str) -> MetricInfo:
         family = "yoy"
         unit_text = "Variation annuelle (%)"
         value_header = "Valeur (variation annuelle %)"
-        jitter_amp = MOCK_JITTER_YOY
+        jitter_default = MOCK_JITTER_YOY_DEFAULT
 
         if rest == "france":
             zone = "France"
@@ -154,13 +157,12 @@ def _metric_info(metric_uid: str) -> MetricInfo:
         label=label,
         unit_text=unit_text,
         value_header=value_header,
-        jitter_amp=jitter_amp,
+        jitter_default=jitter_default,
     )
 
 
 def _stable_noise(key: str) -> float:
-    # bruit stable dans [-1 ; +1] : ne “bouge” pas à chaque refresh,
-    # mais chaque nouveau point (nouveau scraped_at) aura une valeur différente.
+    # bruit stable dans [-1 ; +1]
     h = hashlib.md5(key.encode("utf-8")).hexdigest()
     n = int(h[:8], 16) / 0xFFFFFFFF
     return (n - 0.5) * 2.0
@@ -196,7 +198,7 @@ def _load_latest() -> pd.DataFrame:
     df["label"] = infos.apply(lambda x: x.label)
     df["unit_text"] = infos.apply(lambda x: x.unit_text)
     df["value_header"] = infos.apply(lambda x: x.value_header)
-    df["jitter_amp"] = infos.apply(lambda x: x.jitter_amp)
+    df["jitter_default"] = infos.apply(lambda x: x.jitter_default)
 
     return df
 
@@ -218,8 +220,6 @@ def _load_history(metric_uid: str, limit: int) -> pd.DataFrame:
     df["scraped_at_paris"] = pd.to_datetime(
         df["scraped_at"].apply(lambda s: _parse_iso_to_paris_dt(s).isoformat())
     )
-
-    df = df.sort_values("scraped_at_paris")
     return df
 
 
@@ -293,7 +293,7 @@ else:
 
 st.divider()
 
-st.subheader("Historique")
+st.subheader("Historique (courbe + tableau)")
 
 labels = sorted(latest["label"].unique().tolist())
 label_to_uid = {
@@ -330,25 +330,61 @@ with right:
     ui_mock = st.checkbox(
         "Mode mock : courbe animée (démo)",
         value=DEFAULT_UI_MOCK,
-        help="Ajoute un léger bruit *stable* (par point) pour que la courbe bouge à chaque nouvelle collecte, sans modifier la DB.",
+        help="Ajoute une variation simulée visible sur la courbe (sans modifier la DB).",
     )
 
-hist = _load_history(selected_uid, limit=limit)
-if hist.empty:
+hist_desc = _load_history(selected_uid, limit=limit)
+if hist_desc.empty:
     st.info("Pas encore d'historique pour cette métrique.")
     st.stop()
 
-hist["valeur_affichee"] = hist["value"].astype(float)
+# Table doit être du plus récent au plus ancien
+hist_desc = hist_desc.sort_values("scraped_at_paris", ascending=False).copy()
 
+# Graph doit être chronologique (ancien -> récent)
+hist_asc = hist_desc.sort_values("scraped_at_paris", ascending=True).copy()
+
+# Mock visible : jitter + légère oscillation dépendante du temps (pour un rendu vivant)
+# L’oscillation est identique pour tout le monde, le jitter dépend du point (scraped_at)
+jitter_default = info.jitter_default
 if ui_mock:
-    amp = info.jitter_amp
-    hist["valeur_affichee"] = hist.apply(
-        lambda r: float(r["value"])
-        + _stable_noise(f"{selected_uid}|{r['scraped_at']}") * amp,
-        axis=1,
+    max_amp = 10.0 if info.family == "indices" else 3.0
+    amp = st.slider(
+        "Intensité du mock (plus = plus visible)",
+        min_value=0.0,
+        max_value=max_amp,
+        value=float(jitter_default),
+        step=0.1,
     )
+else:
+    amp = 0.0
 
-plot_df = hist[["scraped_at_paris", "value", "valeur_affichee"]].copy()
+now_ts = datetime.now(PARIS_TZ).timestamp()
+wave = math.sin(now_ts / 5.0) * (
+    amp * 0.25
+)  # petit mouvement global pour que ça “vive”
+
+
+def _mock_value(
+    metric_uid: str, scraped_at: str, base: float, amplitude: float
+) -> float:
+    if amplitude <= 0:
+        return base
+    n = _stable_noise(f"{metric_uid}|{scraped_at}")
+    return base + (n * amplitude) + wave
+
+
+hist_asc["valeur_affichee"] = hist_asc.apply(
+    lambda r: (
+        _mock_value(selected_uid, str(r["scraped_at"]), float(r["value"]), amp)
+        if ui_mock
+        else float(r["value"])
+    ),
+    axis=1,
+)
+
+# --------- Graph (chronologique)
+plot_df = hist_asc[["scraped_at_paris", "value", "valeur_affichee"]].copy()
 plot_df["Heure (Paris)"] = plot_df["scraped_at_paris"].dt.strftime("%H:%M:%S")
 plot_df["Date"] = plot_df["scraped_at_paris"].dt.strftime("%d/%m/%Y")
 plot_df.rename(
@@ -383,5 +419,15 @@ else:
     st.line_chart(plot_df.set_index("scraped_at_paris")[["Valeur affichée"]])
 
 st.caption(
-    f"Dernier point : {_fmt_dt_paris(hist['scraped_at_paris'].max())} — heure de Paris."
+    f"Dernier point : {_fmt_dt_paris(hist_desc['scraped_at_paris'].max())} — heure de Paris."
 )
+
+# --------- Tableau (plus récent -> plus ancien)
+st.markdown("**Historique (du plus récent au plus ancien)**")
+
+table_df = hist_desc[["scraped_at_paris", "value"]].copy()
+table_df["Date/heure (Paris)"] = table_df["scraped_at_paris"].apply(_fmt_dt_paris)
+table_df.rename(columns={"value": info.value_header}, inplace=True)
+table_df = table_df[["Date/heure (Paris)", info.value_header]]
+
+st.dataframe(table_df, hide_index=True, use_container_width=True)
