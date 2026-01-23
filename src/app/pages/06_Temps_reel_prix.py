@@ -69,6 +69,15 @@ def _fmt_dt_paris(x) -> str:
     return dt.astimezone(PARIS_TZ).strftime("%d/%m/%Y %H:%M:%S")
 
 
+def _fmt_dt_paris_full(x) -> str:
+    if x is None:
+        return "n/a"
+    dt = _to_py_dt(x)
+    if hasattr(dt, "tzinfo") and dt.tzinfo is not None:
+        dt = dt.astimezone(PARIS_TZ)
+    return f"{dt.strftime('%d/%m/%Y %H:%M:%S')} (Europe/Paris)"
+
+
 def _human_delta(seconds: float) -> str:
     seconds = max(0, int(seconds))
     if seconds < 60:
@@ -177,8 +186,15 @@ def _read_sqlite(query: str, params: tuple = ()) -> pd.DataFrame:
     return df
 
 
+def _read_sqlite_safe(query: str, params: tuple = ()) -> pd.DataFrame:
+    try:
+        return _read_sqlite(query, params=params)
+    except Exception:
+        return pd.DataFrame()
+
+
 def _load_latest() -> pd.DataFrame:
-    df = _read_sqlite(
+    df = _read_sqlite_safe(
         """
         SELECT metric_uid, metric_name, geo, unit, period, value, scraped_at
         FROM realtime_price_latest
@@ -203,8 +219,8 @@ def _load_latest() -> pd.DataFrame:
     return df
 
 
-def _load_history(metric_uid: str, limit: int) -> pd.DataFrame:
-    df = _read_sqlite(
+def _load_history_changes(metric_uid: str, limit: int) -> pd.DataFrame:
+    df = _read_sqlite_safe(
         """
         SELECT metric_uid, period, value, scraped_at
         FROM realtime_price_history
@@ -221,6 +237,42 @@ def _load_history(metric_uid: str, limit: int) -> pd.DataFrame:
         df["scraped_at"].apply(lambda s: _parse_iso_to_paris_dt(s).isoformat())
     )
     return df
+
+
+def _load_runs_timeline(limit: int) -> pd.DataFrame:
+    # On garde une query "robuste" : si des colonnes n'existent pas, on ne les sélectionne pas.
+    df = _read_sqlite_safe(
+        """
+        SELECT run_id, started_at, finished_at, status, errors_count, error_sample
+        FROM realtime_price_runs
+        ORDER BY started_at DESC
+        LIMIT ?
+        """,
+        (limit,),
+    )
+    if df.empty:
+        return df
+
+    # On utilise finished_at comme timestamp "scrape terminé"
+    df["scraped_at"] = df["finished_at"]
+    df["scraped_at_paris"] = pd.to_datetime(
+        df["scraped_at"].apply(lambda s: _parse_iso_to_paris_dt(str(s)).isoformat())
+    )
+    return df
+
+
+def _load_last_run() -> pd.DataFrame:
+    return _read_sqlite_safe(
+        """
+        SELECT run_id, started_at, finished_at, duration_ms, status,
+               points_count, points_valid_count,
+               stored_history_count, skipped_history_count,
+               dq_errors_count, errors_count, error_sample
+        FROM realtime_price_runs
+        ORDER BY started_at DESC
+        LIMIT 1
+        """
+    )
 
 
 # =========================
@@ -245,14 +297,39 @@ now_dt = datetime.now(PARIS_TZ)
 periods = sorted(set(latest["period"].dropna().astype(str).tolist()))
 period_txt = periods[-1] if periods else "n/a"
 
+last_run_df = _load_last_run()
+last_run_dt = None
+last_run_status = "n/a"
+last_run_errors = "n/a"
+if not last_run_df.empty:
+    last_run_dt = _parse_iso_to_paris_dt(str(last_run_df.iloc[0]["finished_at"]))
+    last_run_status = str(last_run_df.iloc[0].get("status", "n/a"))
+    last_run_errors = str(last_run_df.iloc[0].get("errors_count", "n/a"))
+
 c1, c2, c3, c4 = st.columns(4)
+
 c1.metric("Fréquence de collecte", f"{POLL_INTERVAL_SECONDS} s")
-c2.metric("Dernière collecte (Paris)", _fmt_dt_paris(last_dt))
+
+with c2:
+    st.markdown("**Dernière collecte (Paris)**")
+    st.write(_fmt_dt_paris_full(last_dt))
+
 c3.metric(
-    "Dernier run",
+    "Dernière collecte",
     f"il y a {_human_delta((now_dt - _to_py_dt(last_dt)).total_seconds())}",
 )
+
 c4.metric("Période INSEE (dernière)", period_txt)
+
+c5, c6, c7, c8 = st.columns(4)
+
+with c5:
+    st.markdown("**Dernier run worker (Paris)**")
+    st.write(_fmt_dt_paris_full(last_run_dt) if last_run_dt else "n/a")
+
+c6.metric("Status run", last_run_status)
+c7.metric("Erreurs run", last_run_errors)
+c8.metric("DB", os.path.basename(DB_PATH))
 
 st.divider()
 
@@ -317,6 +394,13 @@ selected_label = st.selectbox("Choisir une métrique", options=ordered, index=0)
 selected_uid = label_to_uid.get(selected_label, latest["metric_uid"].iloc[0])
 info = _metric_info(selected_uid)
 
+# Valeur actuelle (latest) pour cette métrique
+sel_latest = latest[latest["metric_uid"] == selected_uid].iloc[0]
+current_value = float(sel_latest["value"])
+current_period = str(sel_latest["period"])
+current_scraped_at = str(sel_latest["scraped_at"])
+current_scraped_at_paris = sel_latest["scraped_at_paris"]
+
 left, right = st.columns([1, 1])
 with left:
     limit = st.slider(
@@ -333,10 +417,50 @@ with right:
         help="Ajoute une variation simulée visible sur la courbe (sans modifier la DB).",
     )
 
-hist_desc = _load_history(selected_uid, limit=limit)
-if hist_desc.empty:
-    st.info("Pas encore d'historique pour cette métrique.")
-    st.stop()
+mode = st.radio(
+    "Source de l'historique",
+    options=[
+        "Chaque scraping (runs) — recommandé pour une démo temps réel",
+        "Changements seulement (history) — journal des changements",
+    ],
+    index=0,
+    help=(
+        "Avec la déduplication, 'history' n'écrit que quand la valeur change. "
+        "Pour voir un point toutes les X secondes, utilise 'runs'."
+    ),
+)
+
+if mode.startswith("Chaque scraping"):
+    runs = _load_runs_timeline(limit)
+    if runs.empty:
+        st.info(
+            "Pas encore de runs. Démarre le worker (`make rt-up`) ou fais un one-shot."
+        )
+        st.stop()
+
+    # On construit une série temporelle : un point par run, avec la valeur actuelle
+    hist_desc = pd.DataFrame(
+        {
+            "metric_uid": selected_uid,
+            "period": current_period,
+            "value": current_value,
+            "scraped_at": runs["scraped_at"].astype(str),
+            "scraped_at_paris": runs["scraped_at_paris"],
+        }
+    )
+
+    # Le "dernier scraping" affiché correspondra au dernier run (et non au dernier changement)
+    last_point_dt = hist_desc["scraped_at_paris"].max()
+
+else:
+    hist_desc = _load_history_changes(selected_uid, limit=limit)
+    if hist_desc.empty:
+        st.info("Pas encore d'historique (changements) pour cette métrique.")
+        st.caption(
+            "Astuce : si la valeur ne change pas, la table 'history' peut rester ancienne : c'est normal."
+        )
+        st.stop()
+    last_point_dt = hist_desc["scraped_at_paris"].max()
 
 # Table doit être du plus récent au plus ancien
 hist_desc = hist_desc.sort_values("scraped_at_paris", ascending=False).copy()
@@ -345,7 +469,6 @@ hist_desc = hist_desc.sort_values("scraped_at_paris", ascending=False).copy()
 hist_asc = hist_desc.sort_values("scraped_at_paris", ascending=True).copy()
 
 # Mock visible : jitter + légère oscillation dépendante du temps (pour un rendu vivant)
-# L’oscillation est identique pour tout le monde, le jitter dépend du point (scraped_at)
 jitter_default = info.jitter_default
 if ui_mock:
     max_amp = 10.0 if info.family == "indices" else 3.0
@@ -360,9 +483,7 @@ else:
     amp = 0.0
 
 now_ts = datetime.now(PARIS_TZ).timestamp()
-wave = math.sin(now_ts / 5.0) * (
-    amp * 0.25
-)  # petit mouvement global pour que ça “vive”
+wave = math.sin(now_ts / 5.0) * (amp * 0.25)
 
 
 def _mock_value(
@@ -385,8 +506,9 @@ hist_asc["valeur_affichee"] = hist_asc.apply(
 
 # --------- Graph (chronologique)
 plot_df = hist_asc[["scraped_at_paris", "value", "valeur_affichee"]].copy()
-plot_df["Heure (Paris)"] = plot_df["scraped_at_paris"].dt.strftime("%H:%M:%S")
-plot_df["Date"] = plot_df["scraped_at_paris"].dt.strftime("%d/%m/%Y")
+plot_df["Date/heure (Paris)"] = plot_df["scraped_at_paris"].dt.strftime(
+    "%d/%m/%Y %H:%M:%S"
+)
 plot_df.rename(
     columns={"valeur_affichee": "Valeur affichée", "value": "Valeur brute"},
     inplace=True,
@@ -398,29 +520,29 @@ if alt is not None:
     base = alt.Chart(plot_df).encode(
         x=alt.X(
             "scraped_at_paris:T",
-            title="Heure de collecte (Paris)",
-            axis=alt.Axis(format="%H:%M:%S"),
+            title="Date/heure collecte (Paris)",
+            axis=alt.Axis(format="%d/%m %H:%M:%S", labelAngle=-45),
         ),
         y=alt.Y("Valeur affichée:Q", title=info.unit_text),
         tooltip=[
-            alt.Tooltip("Date:N"),
-            alt.Tooltip("Heure (Paris):N"),
+            alt.Tooltip("Date/heure (Paris):N"),
             alt.Tooltip("Valeur brute:Q", format=".3f"),
             alt.Tooltip("Valeur affichée:Q", format=".3f"),
         ],
     )
     st.altair_chart(
         (base.mark_line() + base.mark_circle(size=30)).properties(
-            title=chart_title, height=320
+            title=chart_title, height=340
         ),
         use_container_width=True,
     )
 else:
     st.line_chart(plot_df.set_index("scraped_at_paris")[["Valeur affichée"]])
 
-st.caption(
-    f"Dernier point : {_fmt_dt_paris(hist_desc['scraped_at_paris'].max())} — heure de Paris."
-)
+st.caption(f"Dernier point affiché : {_fmt_dt_paris(last_point_dt)} — heure de Paris.")
+
+# Info "dernier scraping" complet (utile pour lever l'ambiguïté)
+st.caption(f"Dernier scraping (latest) : {_fmt_dt_paris(current_scraped_at_paris)} — ")
 
 # --------- Tableau (plus récent -> plus ancien)
 st.markdown("**Historique (du plus récent au plus ancien)**")

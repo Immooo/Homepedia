@@ -3,8 +3,8 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import datetime, UTC
+from typing import Any
 
 import requests
 from bs4 import BeautifulSoup
@@ -23,7 +23,7 @@ class PricePoint:
     scraped_at: datetime
 
 
-def _to_float(s: str) -> Optional[float]:
+def _to_float(s: str) -> float | None:
     if s is None:
         return None
     s = s.strip()
@@ -38,7 +38,7 @@ def _to_float(s: str) -> Optional[float]:
         return None
 
 
-def _normalize_period(s: str) -> Optional[str]:
+def _normalize_period(s: str) -> str | None:
     """
     Accept common quarter formats:
       - 2025-T3, 2025 T3, 2025T3, T3 2025
@@ -142,10 +142,12 @@ def _extract_headers(table) -> list[str]:
             return labels
 
     # fallback: any th in table
-    return [th.get_text(" ", strip=True).replace("\xa0", " ") for th in table.find_all("th")]
+    return [
+        th.get_text(" ", strip=True).replace("\xa0", " ") for th in table.find_all("th")
+    ]
 
 
-def _find_latest_data_row(table) -> tuple[Optional[str], list[str]]:
+def _find_latest_data_row(table) -> tuple[str | None, list[str]]:
     """
     Return (period, row_cells_texts) for the first row that looks like a quarter.
     Handles cases where the period is in <th scope="row">.
@@ -166,24 +168,26 @@ def _find_latest_data_row(table) -> tuple[Optional[str], list[str]]:
 
 
 def _infer_geo(label: str) -> str:
-    l = label.lower()
-    if "ile-de-france" in l or "île-de-france" in l or "idf" in l:
+    label_lc = label.lower()
+    if "ile-de-france" in label_lc or "île-de-france" in label_lc or "idf" in label_lc:
         return "IDF"
-    if "province" in l:
+    if "province" in label_lc:
         return "PROVINCE"
-    if "france" in l:
+    if "france" in label_lc:
         return "FR"
     return "NA"
 
 
-def scrape_insee_housing_prices(source_url: str, timeout_seconds: int = 20) -> tuple[list[PricePoint], dict]:
+def scrape_insee_housing_prices(
+    source_url: str, timeout_seconds: int = 20
+) -> tuple[list[PricePoint], dict]:
     """
     Scrape housing price figures from INSEE page:
     - pick best "indices" table
     - pick best "yoy variation" table
     Parse latest quarter row and map columns to metrics.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     headers = {
         "User-Agent": "Mozilla/5.0 (Homepedia school project; +https://example.local)",
         "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.7",
@@ -205,13 +209,24 @@ def scrape_insee_housing_prices(source_url: str, timeout_seconds: int = 20) -> t
         return [], raw_debug
 
     # pick best tables
-    scored_indices = sorted((( _score_table(t, "indices"), i, t) for i, t in enumerate(tables)), reverse=True, key=lambda x: x[0])
-    scored_yoy = sorted((( _score_table(t, "yoy"), i, t) for i, t in enumerate(tables)), reverse=True, key=lambda x: x[0])
+    scored_indices = sorted(
+        ((_score_table(t, "indices"), i, t) for i, t in enumerate(tables)),
+        reverse=True,
+        key=lambda x: x[0],
+    )
+    scored_yoy = sorted(
+        ((_score_table(t, "yoy"), i, t) for i, t in enumerate(tables)),
+        reverse=True,
+        key=lambda x: x[0],
+    )
 
     best_indices_score, best_indices_i, best_indices = scored_indices[0]
     best_yoy_score, best_yoy_i, best_yoy = scored_yoy[0]
 
-    raw_debug["best_indices"] = {"score": best_indices_score, "table_index": best_indices_i}
+    raw_debug["best_indices"] = {
+        "score": best_indices_score,
+        "table_index": best_indices_i,
+    }
     raw_debug["best_yoy"] = {"score": best_yoy_score, "table_index": best_yoy_i}
 
     # thresholds: if score too low, skip
@@ -224,19 +239,14 @@ def scrape_insee_housing_prices(source_url: str, timeout_seconds: int = 20) -> t
 
         hdrs = _extract_headers(table)
 
-        # Align headers to row values:
-        # row = [period, v1, v2, ...]
-        # hdrs might be longer/shorter; we take last N headers for values if possible.
         values = row[1:]
         if len(hdrs) >= len(values) + 1:
-            # typical: hdrs includes the first label for period column
-            col_labels = hdrs[-len(values):]
+            col_labels = hdrs[-len(values) :]
         else:
-            # fallback: generate labels col_1, col_2...
             col_labels = [f"col_{i+1}" for i in range(len(values))]
 
         unit = "pct" if kind == "yoy" else "index_base"
-        for label, val_txt in zip(col_labels, values):
+        for label, val_txt in zip(col_labels, values, strict=False):
             v = _to_float(val_txt)
             if v is None:
                 continue
@@ -266,7 +276,6 @@ def scrape_insee_housing_prices(source_url: str, timeout_seconds: int = 20) -> t
 
     raw_debug["points_count"] = len(points)
 
-    # Add a tiny sample of headers for debugging
     try:
         raw_debug["indices_headers_sample"] = _extract_headers(best_indices)[:12]
         raw_debug["yoy_headers_sample"] = _extract_headers(best_yoy)[:12]
