@@ -43,7 +43,7 @@
 | Orchestration Make/PowerShell | Moyenne | 4 | 20/08/2026 | 1 | 0 | 27/08/2026 | Batch correctement identifié comme lancé ponctuellement ; préciser ensuite Make/PowerShell et l'absence de scheduler |
 | Justification SQLite | Critique | 3 | 12/08/2026 | 1 | 0 | 16/08/2026 | Justification locale correcte ; ajouter absence de serveur et limite concurrence |
 | Justification MongoDB | Haute | 0 | Jamais | 0 | 0 | J11 | Non évalué |
-| Double écriture et cohérence | Critique | 0 | Jamais | 0 | 0 | J11 | Non évalué |
+| Double écriture et cohérence | Critique | 4 | 20/08/2026 | 2 | 1 | 27/08/2026 | Propose une réconciliation qui détecte les divergences et rejoue les écritures manquantes |
 | Justification Spark/pandas | Critique | 2 | 12/08/2026 | 0 | 1 | 13/08/2026 | Comprend le principe, doit distinguer pandas en mémoire et Spark distribué |
 | Polling versus vrai streaming | Critique | 4 | 20/08/2026 | 3 | 2 | 27/08/2026 | Emploie correctement « polling micro-batch périodique » et le distingue du vrai streaming |
 | DQ des `PricePoint` | Haute | 4 | 20/08/2026 | 1 | 0 | 27/08/2026 | Contrôles DQ correctement associés à la présence, au format et à la validité des données avant stockage |
@@ -80,7 +80,7 @@
 | Indicateur | Valeur initiale |
 |---|---:|
 | Séances terminées | 4 / 21 |
-| Questions évaluées | 75 |
+| Questions évaluées | 78 |
 | Moyenne des notes | 7,4 / 10 |
 | Notions critiques ≥ 4/5 | 4 |
 | Présentations complètes réalisées | 0 |

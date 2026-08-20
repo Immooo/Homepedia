@@ -61,7 +61,7 @@ Deux ou trois phrases maximum.
 ## Séance J4 — 2026-08-20
 
 - Durée : deux blocs interactifs, environ 2 h 15
-- Questions posées : 39
+- Questions posées : 42
 - Note moyenne : 7,1/10
 - Exercice oral : reconstruction guidée de la chaîne globale, des preuves d'exécution locale et présentation de 60 à 90 secondes
 - Résultat : architecture globale retrouvée ; distinguer plus précisément Spark, SQLite, MongoDB et les sources INSEE dans le récit oral
@@ -85,6 +85,7 @@ confusions SQLite/MongoDB, sources INSEE et formulation orale restent prioritair
 - principe d'un contrat de données canonique.
 - polling micro-batch périodique, distinct du vrai streaming ;
 - séparation `latest` / `history` / `runs` du temps réel.
+- compromis de la double écriture SQLite/MongoDB et principe de réconciliation.
 
 ### Notions fragiles
 
@@ -94,6 +95,7 @@ confusions SQLite/MongoDB, sources INSEE et formulation orale restent prioritair
 - batch versus polling micro-batch ;
 - migrations versionnées et tests de contrat.
 - présenter explicitement une limite réelle à l'oral.
+- expliquer l'impact d'une panne partielle entre SQLite et MongoDB.
 
 ### Erreurs à corriger
 
