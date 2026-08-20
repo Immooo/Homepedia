@@ -1,6 +1,52 @@
 # Homepedia — Programme de préparation sur 21 jours
 
-## Calendrier accéléré — du 12 août au 3 septembre 2026
+## Calendrier réorganisé — du 20 août au 3 septembre 2026
+
+Le programme a été recalibré le 20 août après trois séances terminées. Le temps
+de travail disponible est réduit du lundi au mercredi à cause de l'entreprise
+(9 h–17 h 30), tandis que le jeudi et le vendredi permettent deux blocs de
+travail. Homepedia doit aussi partager la période avec un second projet plus
+petit.
+
+Rythme retenu :
+
+- priorité à Homepedia jusqu'à la répétition générale, avant de basculer sur le
+  second projet ;
+- lundi à mercredi : deux heures par jour, pour une séance principale et un
+  rappel ciblé, ou exceptionnellement deux blocs courts ;
+- jeudi et vendredi : deux blocs possibles, le matin et l'après-midi, en tenant
+  compte de la pause déjeuner à domicile de 12 h 30 à 14 h ;
+- samedi : une séance légère facultative servant de tampon ;
+- dimanche : libre, sans séance indispensable au calendrier ;
+- 3 septembre : répétition finale, puis aucune nouvelle notion.
+
+| Date | Séance Homepedia | Charge prévue |
+|---|---:|---|
+| 20 août, jeudi | J4 vers 14 h, J5 vers 16 h 15 si énergie suffisante | Composants puis révision cumulative |
+| 21 août, vendredi | J6 matin, J7 après 14 h | Ingestion DVF puis INSEE/géographie |
+| 22 août, samedi | J8 léger, facultatif | Spark et formats ; premier tampon |
+| 23 août, dimanche | — | Repos, aucune séance requise |
+| 24 août, lundi | J9 | Stockage et déploiement ; rappel J4–J8 dans les deux heures disponibles |
+| 25 août, mardi | J10 | Présentation courte et corrections |
+| 26 août, mercredi | J11 puis rappel préparatoire J12 | SQLite, MongoDB et double persistance |
+| 27 août, jeudi | J12 matin, J13 après 14 h | Spark/pandas/Parquet puis temps réel |
+| 28 août, vendredi | J14 matin, J15 après 14 h | Performance puis entretien intermédiaire |
+| 29 août, samedi | Tampon facultatif | Rattrapage léger seulement si J8 a été manqué |
+| 30 août, dimanche | — | Repos, aucune séance requise |
+| 31 août, lundi | J16 | Incidents et reprise |
+| 1 septembre, mardi | J17 | Qualité et observabilité |
+| 2 septembre, mercredi | J18 et préparation J19 | Sécurité/limites puis construction du récit de démonstration |
+| 3 septembre, jeudi | J19 matin, J20 début d'après-midi, J21 fin d'après-midi | Démonstration, entretien blanc et répétition générale |
+| 4 septembre, vendredi | Filet de sécurité | Rappel léger seulement si la soutenance a lieu ce jour-là |
+
+Les journées doubles ne fusionnent pas les séances : chaque bloc garde son bilan.
+Le jeudi et le vendredi, la pause déjeuner sépare naturellement les blocs. Le
+20 août, faute de matinée disponible, une pause d'au moins une heure est prévue
+entre J4 et J5. Si la fatigue fait baisser nettement la qualité, le second bloc
+devient une révision courte et son contenu est déplacé sur le tampon du samedi ou
+sur l'une des plages de deux heures du lundi au mercredi.
+
+## Calendrier accéléré initial — du 12 août au 3 septembre 2026
 
 Le retard est absorbable : il reste 23 jours calendaires pour 21 séances. Le
 programme conserve donc toutes ses étapes, avec deux journées de rattrapage. La

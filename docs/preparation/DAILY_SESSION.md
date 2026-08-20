@@ -9,12 +9,12 @@
 | Champ | Valeur |
 |---|---|
 | Programme | En cours |
-| Prochaine séance | Jour 4 — Composants et état réel |
-| Commande | `Commence le jour 4` |
-| Dernière séance | J3 — 14/08/2026 |
-| Calendrier | Accéléré du 12/08/2026 au 03/09/2026 |
-| Jours tampon | 18/08 et 25/08 |
-| Point prioritaire | Diagnostic initial sans consultation des réponses |
+| Prochaine séance | Jour 5 — Révision cumulative 1 |
+| Commande | `Commence le jour 5` |
+| Dernière séance | J4 — 20/08/2026 |
+| Calendrier | Réorganisé du 20/08/2026 au 03/09/2026 : 2 h lun.–mer., doubles blocs jeu.–ven. |
+| Jours tampon | Samedi léger facultatif ; dimanche libre ; 04/09 en filet de sécurité |
+| Point prioritaire | Consolider SQLite/MongoDB, les fichiers temps réel et la divergence de schéma avant d'ajouter du contenu |
 
 ## Format d'une entrée
 
@@ -57,6 +57,70 @@ Deux ou trois phrases maximum.
 ```
 
 ## Historique
+
+## Séance J4 — 2026-08-20
+
+- Durée : séance interactive intensive, environ 24 réponses évaluées
+- Questions posées : 24
+- Note moyenne : 7,2/10
+- Exercice oral : reconstruction guidée de la chaîne globale et des preuves d'exécution locale
+- Résultat : architecture globale retrouvée ; rôles précis des fichiers, MongoDB et contrats de données à consolider
+
+### Résumé très court
+
+Après un démarrage trop directement centré sur les fichiers, la séance a été
+reprise depuis l'architecture globale. Tu sais à nouveau raconter le flux
+sources → ETL/pandas → stockage → Streamlit, positionner Spark sur DVF et citer
+la preuve d'environ 5,8 millions de transactions. Les confusions SQLite/MongoDB
+et scraper/worker restent prioritaires.
+
+### Notions maîtrisées
+
+- rôle de Streamlit comme interface utilisateur ;
+- rôle de pandas dans les scripts ETL ;
+- Spark appliqué aux transactions DVF et intérêt des agrégats ;
+- perte du détail après agrégation ;
+- `data/homepedia.db` comme preuve de l'exécution locale ;
+- noms anglais dans le code courant, français dans la base locale ;
+- principe d'un contrat de données canonique.
+
+### Notions fragiles
+
+- associer les noms précis des fichiers à leurs rôles ;
+- distinguer `insee_scraper.py`, `worker.py` et `sqlite_store.py` ;
+- rôle de MongoDB versus SQLite ;
+- batch versus polling micro-batch ;
+- migrations versionnées et tests de contrat.
+
+### Erreurs à corriger
+
+- Affirmation : « Le dashboard lit MongoDB car les données sont pré-agrégées. »
+  - Pourquoi elle est incorrecte : Streamlit lit principalement SQLite, avec
+    certains fichiers Parquet et GeoJSON ; MongoDB complète surtout le temps réel.
+  - Formulation attendue : « SQLite sert directement l'interface ; MongoDB garde
+    notamment le brut, les observations et le dernier état du sous-système temps réel. »
+- Affirmation : « Les noms de tables sont normalement les mêmes. »
+  - Pourquoi elle est incorrecte : une divergence est constatée entre le code
+    courant en anglais et la base locale surtout en français.
+  - Formulation attendue : « Je constate une dérive de contrat à corriger par un
+    schéma canonique, des migrations versionnées et des tests de contrat. »
+
+### Révisions programmées
+
+| Notion | Niveau | Prochaine révision | Motif |
+|---|---:|---|---|
+| Problème métier et pitch | 2 | 22/08/2026 | Citer systématiquement DVF et INSEE |
+| Fichiers et composants centraux | 2 | 22/08/2026 | Noms et rôles à mémoriser |
+| Polling versus vrai streaming | 2 | 22/08/2026 | Employer batch et micro-batch périodique |
+| Divergence de schéma/branches | 4 | 27/08/2026 | Réponse correcte après reformulation |
+| MongoDB : collections et index | 3 | 24/08/2026 | Distinguer MongoDB et SQLite |
+
+### Objectifs de la séance suivante
+
+- réviser d'abord les erreurs J1–J4 ;
+- raconter le projet en deux minutes sans notes ;
+- distinguer tous les flux batch, Spark et temps réel ;
+- renforcer les fichiers centraux sans perdre la vision globale.
 
 ## Séance J1 — 2026-08-12
 

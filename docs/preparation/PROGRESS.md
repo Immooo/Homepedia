@@ -18,36 +18,36 @@
 
 | Notion | Importance | Niveau 0–5 | Dernière révision | Bonnes réponses | Erreurs | Prochaine révision | Commentaire |
 |---|---|---:|---|---:|---:|---|---|
-| Problème métier et pitch | Critique | 3 | 12/08/2026 | 1 | 0 | 16/08/2026 | Réponse correcte mais encore à enrichir avec les indicateurs INSEE et les utilisateurs |
+| Problème métier et pitch | Critique | 2 | 20/08/2026 | 1 | 1 | 22/08/2026 | Valeur immobilière par lieu comprise ; citer aussi les indicateurs INSEE et la visualisation comparative |
 | Sources DVF et INSEE | Critique | 3 | 12/08/2026 | 1 | 0 | 16/08/2026 | DVF immobilier, INSEE socio-économique ; préciser les variables |
-| Entrées, sorties et utilisateurs | Haute | 3 | 12/08/2026 | 1 | 1 | 16/08/2026 | Bonne distinction utilisateur/développeur ; préciser aussi export, monitoring et maintenance |
-| Architecture globale | Critique | 3 | 14/08/2026 | 1 | 0 | 18/08/2026 | Bonne synthèse des couches source, traitement, stockage et présentation |
+| Entrées, sorties et utilisateurs | Haute | 4 | 20/08/2026 | 3 | 1 | 27/08/2026 | Distingue clairement pandas, SQLite et Streamlit ; revoir aussi exports et rôles de maintenance |
+| Architecture globale | Critique | 3 | 20/08/2026 | 2 | 0 | 24/08/2026 | Chaîne globale correcte ; préciser Spark comme flux DVF parallèle et MongoDB surtout pour le temps réel/mirroring |
 | Parcours d'une transaction DVF | Critique | 3 | 14/08/2026 | 1 | 1 | 18/08/2026 | Parcours compris ; distinguer CSV, table détaillée et agrégat |
 | Parcours d'un indicateur INSEE | Haute | 3 | 14/08/2026 | 1 | 0 | 18/08/2026 | Parcours général correct ; retenir FILOSOFI, code commune→département et Parquet |
 | Parcours d'un indice temps réel | Critique | 0 | Jamais | 0 | 0 | J3 | Non évalué |
-| Fichiers et composants centraux | Haute | 2 | 14/08/2026 | 0 | 1 | 16/08/2026 | Composants cités, rôles encore à consolider |
-| État local et preuves chiffrées | Haute | 0 | Jamais | 0 | 0 | J4 | 5 814 960 transactions constatées |
-| Divergence de schéma/branches | Critique | 0 | Jamais | 0 | 0 | J4 | Anglais dans le code, français dans la base |
-| Ingestion et nettoyage DVF | Critique | 3 | 12/08/2026 | 1 | 0 | 16/08/2026 | Comprend sélection, transformation et suppression des doublons |
+| Fichiers et composants centraux | Haute | 2 | 20/08/2026 | 0 | 4 | 22/08/2026 | Fichiers DVF/Spark/realtime repérés avec indice ; mémoriser leurs rôles et latest/history/runs |
+| État local et preuves chiffrées | Haute | 4 | 20/08/2026 | 2 | 0 | 27/08/2026 | Retient environ 5,8 millions de transactions et `data/homepedia.db` comme preuve d'exécution locale |
+| Divergence de schéma/branches | Critique | 4 | 20/08/2026 | 3 | 2 | 27/08/2026 | Retient contrat de données canonique ; consolider migrations versionnées et tests de contrat |
+| Ingestion et nettoyage DVF | Critique | 4 | 20/08/2026 | 2 | 0 | 27/08/2026 | pandas correctement associé aux scripts ETL : extraction, transformation et chargement des données |
 | Idempotence des batchs | Critique | 0 | Jamais | 0 | 0 | J6 | `append` à discuter |
 | Ingestion des indicateurs INSEE | Haute | 0 | Jamais | 0 | 0 | J7 | Non évalué |
 | Codes géographiques Corse/DOM | Haute | 0 | Jamais | 0 | 0 | J7 | Plusieurs implémentations incohérentes |
-| Agrégations et biais statistiques | Haute | 3 | 14/08/2026 | 1 | 0 | 18/08/2026 | Gain de volume compris ; perte du détail communal à préciser |
+| Agrégations et biais statistiques | Haute | 4 | 20/08/2026 | 3 | 0 | 27/08/2026 | Comprend le gain de performance et la perte du détail transactionnel après agrégation |
 | Jointures et clés géographiques | Haute | 2 | 14/08/2026 | 0 | 1 | 16/08/2026 | Idée générale correcte ; jointure sur code, pas simplement sur fichiers |
-| Usage réel de Spark | Critique | 2 | 12/08/2026 | 0 | 1 | 13/08/2026 | Bonne intuition volume/parallélisation ; préciser qu'aucun cluster n'est démontré |
+| Usage réel de Spark | Critique | 4 | 20/08/2026 | 1 | 1 | 27/08/2026 | Spark correctement associé à la pré-agrégation des transactions DVF ; revoir ensuite session locale et absence de cluster démontré |
 | `toPandas()` et frontière driver | Haute | 0 | Jamais | 0 | 0 | J8 | Non évalué |
 | CSV, Parquet et partitionnement | Haute | 0 | Jamais | 0 | 0 | J8 | Non évalué |
-| SQLite : rôle, index, limites | Critique | 3 | 12/08/2026 | 1 | 0 | 16/08/2026 | `homepedia.db`, local, centralisé et portable |
-| MongoDB : collections et index | Haute | 2 | 14/08/2026 | 0 | 1 | 16/08/2026 | Rôle général compris, latest/history/raw à préciser |
+| SQLite : rôle, index, limites | Critique | 3 | 20/08/2026 | 2 | 0 | 24/08/2026 | Stockage après ETL correctement identifié ; préciser faits, indicateurs, agrégats, temps réel et service direct de l'UI |
+| MongoDB : collections et index | Haute | 3 | 20/08/2026 | 1 | 2 | 24/08/2026 | Comprend qu'une panne Mongo n'empêche pas le dashboard SQLite ; consolider les collections raw/observations/latest |
 | Docker Compose et déploiement | Haute | 3 | 14/08/2026 | 1 | 0 | 18/08/2026 | Comprend conteneurs isolés et services |
-| Orchestration Make/PowerShell | Moyenne | 0 | Jamais | 0 | 0 | J9 | Pas d'orchestrateur de données |
+| Orchestration Make/PowerShell | Moyenne | 4 | 20/08/2026 | 1 | 0 | 27/08/2026 | Batch correctement identifié comme lancé ponctuellement ; préciser ensuite Make/PowerShell et l'absence de scheduler |
 | Justification SQLite | Critique | 3 | 12/08/2026 | 1 | 0 | 16/08/2026 | Justification locale correcte ; ajouter absence de serveur et limite concurrence |
 | Justification MongoDB | Haute | 0 | Jamais | 0 | 0 | J11 | Non évalué |
 | Double écriture et cohérence | Critique | 0 | Jamais | 0 | 0 | J11 | Non évalué |
 | Justification Spark/pandas | Critique | 2 | 12/08/2026 | 0 | 1 | 13/08/2026 | Comprend le principe, doit distinguer pandas en mémoire et Spark distribué |
-| Polling versus vrai streaming | Critique | 3 | 14/08/2026 | 1 | 0 | 18/08/2026 | Batch = données disponibles ; polling = interrogation périodique |
+| Polling versus vrai streaming | Critique | 2 | 20/08/2026 | 1 | 1 | 22/08/2026 | Distingue local/internet, mais doit nommer batch et polling micro-batch |
 | DQ des `PricePoint` | Haute | 0 | Jamais | 0 | 0 | J13 | Non évalué |
-| Latest/history/runs | Critique | 0 | Jamais | 0 | 0 | J13 | Non évalué |
+| Latest/history/runs | Critique | 4 | 20/08/2026 | 1 | 0 | 27/08/2026 | `latest` correctement associé à la dernière valeur connue ; consolider les trois rôles |
 | Upsert, unicité, exactly-once | Critique | 0 | Jamais | 0 | 0 | J13 | Garanties partielles |
 | Performance et goulots | Critique | 0 | Jamais | 0 | 0 | J14 | Non évalué |
 | Scalabilité et architecture cible | Haute | 0 | Jamais | 0 | 0 | J14 | Non évalué |
@@ -79,9 +79,9 @@
 
 | Indicateur | Valeur initiale |
 |---|---:|
-| Séances terminées | 3 / 21 |
-| Questions évaluées | 36 |
-| Moyenne des notes | 7,7 / 10 |
-| Notions critiques ≥ 4/5 | 0 |
+| Séances terminées | 4 / 21 |
+| Questions évaluées | 60 |
+| Moyenne des notes | 7,5 / 10 |
+| Notions critiques ≥ 4/5 | 3 |
 | Présentations complètes réalisées | 0 |
-| Dernière séance | J3 — 14/08/2026 |
+| Dernière séance | J4 — 20/08/2026 |
