@@ -18,14 +18,14 @@
 
 | Notion | Importance | Niveau 0–5 | Dernière révision | Bonnes réponses | Erreurs | Prochaine révision | Commentaire |
 |---|---|---:|---|---:|---:|---|---|
-| Problème métier et pitch | Critique | 2 | 20/08/2026 | 1 | 1 | 22/08/2026 | Valeur immobilière par lieu comprise ; citer aussi les indicateurs INSEE et la visualisation comparative |
-| Sources DVF et INSEE | Critique | 3 | 12/08/2026 | 1 | 0 | 16/08/2026 | DVF immobilier, INSEE socio-économique ; préciser les variables |
+| Problème métier et pitch | Critique | 2 | 20/08/2026 | 1 | 2 | 22/08/2026 | Récit immobilier territorial présent ; remplacer « gérer l'immobilier », citer DVF + INSEE et distinguer données réelles de l'objectif de qualité |
+| Sources DVF et INSEE | Critique | 2 | 20/08/2026 | 1 | 1 | 22/08/2026 | DVF cité dans le récit ; ajouter systématiquement population, revenu, chômage, pauvreté et indices INSEE |
 | Entrées, sorties et utilisateurs | Haute | 4 | 20/08/2026 | 3 | 1 | 27/08/2026 | Distingue clairement pandas, SQLite et Streamlit ; revoir aussi exports et rôles de maintenance |
-| Architecture globale | Critique | 3 | 20/08/2026 | 2 | 0 | 24/08/2026 | Chaîne globale correcte ; préciser Spark comme flux DVF parallèle et MongoDB surtout pour le temps réel/mirroring |
+| Architecture globale | Critique | 2 | 20/08/2026 | 2 | 1 | 22/08/2026 | Récit global tenu, mais Spark, MongoDB et les lectures Streamlit doivent être positionnés plus précisément |
 | Parcours d'une transaction DVF | Critique | 3 | 14/08/2026 | 1 | 1 | 18/08/2026 | Parcours compris ; distinguer CSV, table détaillée et agrégat |
 | Parcours d'un indicateur INSEE | Haute | 3 | 14/08/2026 | 1 | 0 | 18/08/2026 | Parcours général correct ; retenir FILOSOFI, code commune→département et Parquet |
-| Parcours d'un indice temps réel | Critique | 0 | Jamais | 0 | 0 | J3 | Non évalué |
-| Fichiers et composants centraux | Haute | 2 | 20/08/2026 | 0 | 4 | 22/08/2026 | Fichiers DVF/Spark/realtime repérés avec indice ; mémoriser leurs rôles et latest/history/runs |
+| Parcours d'un indice temps réel | Critique | 3 | 20/08/2026 | 1 | 1 | 24/08/2026 | Parcours complet globalement correct : page INSEE → polling/scraper → DQ → SQLite/MongoDB → Streamlit ; dire « périodique », pas « ponctuel » |
+| Fichiers et composants centraux | Haute | 3 | 20/08/2026 | 1 | 6 | 24/08/2026 | `worker.py` correctement placé sur le temps réel ; priorité actuelle : maîtriser les rôles avant les noms de fichiers |
 | État local et preuves chiffrées | Haute | 4 | 20/08/2026 | 2 | 0 | 27/08/2026 | Retient environ 5,8 millions de transactions et `data/homepedia.db` comme preuve d'exécution locale |
 | Divergence de schéma/branches | Critique | 4 | 20/08/2026 | 3 | 2 | 27/08/2026 | Retient contrat de données canonique ; consolider migrations versionnées et tests de contrat |
 | Ingestion et nettoyage DVF | Critique | 4 | 20/08/2026 | 2 | 0 | 27/08/2026 | pandas correctement associé aux scripts ETL : extraction, transformation et chargement des données |
@@ -38,16 +38,16 @@
 | `toPandas()` et frontière driver | Haute | 0 | Jamais | 0 | 0 | J8 | Non évalué |
 | CSV, Parquet et partitionnement | Haute | 0 | Jamais | 0 | 0 | J8 | Non évalué |
 | SQLite : rôle, index, limites | Critique | 3 | 20/08/2026 | 2 | 0 | 24/08/2026 | Stockage après ETL correctement identifié ; préciser faits, indicateurs, agrégats, temps réel et service direct de l'UI |
-| MongoDB : collections et index | Haute | 3 | 20/08/2026 | 1 | 2 | 24/08/2026 | Comprend qu'une panne Mongo n'empêche pas le dashboard SQLite ; consolider les collections raw/observations/latest |
+| MongoDB : collections et index | Haute | 4 | 20/08/2026 | 2 | 2 | 27/08/2026 | Distingue MongoDB de SQLite : Streamlit lit principalement SQLite ; MongoDB complète le temps réel |
 | Docker Compose et déploiement | Haute | 3 | 14/08/2026 | 1 | 0 | 18/08/2026 | Comprend conteneurs isolés et services |
 | Orchestration Make/PowerShell | Moyenne | 4 | 20/08/2026 | 1 | 0 | 27/08/2026 | Batch correctement identifié comme lancé ponctuellement ; préciser ensuite Make/PowerShell et l'absence de scheduler |
 | Justification SQLite | Critique | 3 | 12/08/2026 | 1 | 0 | 16/08/2026 | Justification locale correcte ; ajouter absence de serveur et limite concurrence |
 | Justification MongoDB | Haute | 0 | Jamais | 0 | 0 | J11 | Non évalué |
 | Double écriture et cohérence | Critique | 0 | Jamais | 0 | 0 | J11 | Non évalué |
 | Justification Spark/pandas | Critique | 2 | 12/08/2026 | 0 | 1 | 13/08/2026 | Comprend le principe, doit distinguer pandas en mémoire et Spark distribué |
-| Polling versus vrai streaming | Critique | 2 | 20/08/2026 | 1 | 1 | 22/08/2026 | Distingue local/internet, mais doit nommer batch et polling micro-batch |
-| DQ des `PricePoint` | Haute | 0 | Jamais | 0 | 0 | J13 | Non évalué |
-| Latest/history/runs | Critique | 4 | 20/08/2026 | 1 | 0 | 27/08/2026 | `latest` correctement associé à la dernière valeur connue ; consolider les trois rôles |
+| Polling versus vrai streaming | Critique | 4 | 20/08/2026 | 3 | 2 | 27/08/2026 | Emploie correctement « polling micro-batch périodique » et le distingue du vrai streaming |
+| DQ des `PricePoint` | Haute | 4 | 20/08/2026 | 1 | 0 | 27/08/2026 | Contrôles DQ correctement associés à la présence, au format et à la validité des données avant stockage |
+| Latest/history/runs | Critique | 4 | 20/08/2026 | 4 | 1 | 27/08/2026 | Retient que `history` s'ajoute si la valeur ou la période change ; `runs` garde toutes les tentatives |
 | Upsert, unicité, exactly-once | Critique | 0 | Jamais | 0 | 0 | J13 | Garanties partielles |
 | Performance et goulots | Critique | 0 | Jamais | 0 | 0 | J14 | Non évalué |
 | Scalabilité et architecture cible | Haute | 0 | Jamais | 0 | 0 | J14 | Non évalué |
@@ -80,8 +80,8 @@
 | Indicateur | Valeur initiale |
 |---|---:|
 | Séances terminées | 4 / 21 |
-| Questions évaluées | 60 |
-| Moyenne des notes | 7,5 / 10 |
-| Notions critiques ≥ 4/5 | 3 |
+| Questions évaluées | 75 |
+| Moyenne des notes | 7,4 / 10 |
+| Notions critiques ≥ 4/5 | 4 |
 | Présentations complètes réalisées | 0 |
 | Dernière séance | J4 — 20/08/2026 |

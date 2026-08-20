@@ -60,19 +60,19 @@ Deux ou trois phrases maximum.
 
 ## Séance J4 — 2026-08-20
 
-- Durée : séance interactive intensive, environ 24 réponses évaluées
-- Questions posées : 24
-- Note moyenne : 7,2/10
-- Exercice oral : reconstruction guidée de la chaîne globale et des preuves d'exécution locale
-- Résultat : architecture globale retrouvée ; rôles précis des fichiers, MongoDB et contrats de données à consolider
+- Durée : deux blocs interactifs, environ 2 h 15
+- Questions posées : 39
+- Note moyenne : 7,1/10
+- Exercice oral : reconstruction guidée de la chaîne globale, des preuves d'exécution locale et présentation de 60 à 90 secondes
+- Résultat : architecture globale retrouvée ; distinguer plus précisément Spark, SQLite, MongoDB et les sources INSEE dans le récit oral
 
 ### Résumé très court
 
 Après un démarrage trop directement centré sur les fichiers, la séance a été
 reprise depuis l'architecture globale. Tu sais à nouveau raconter le flux
-sources → ETL/pandas → stockage → Streamlit, positionner Spark sur DVF et citer
-la preuve d'environ 5,8 millions de transactions. Les confusions SQLite/MongoDB
-et scraper/worker restent prioritaires.
+sources → ETL/pandas → stockage → Streamlit, positionner Spark sur DVF, suivre
+le polling INSEE et citer la preuve d'environ 5,8 millions de transactions. Les
+confusions SQLite/MongoDB, sources INSEE et formulation orale restent prioritaires.
 
 ### Notions maîtrisées
 
@@ -83,6 +83,8 @@ et scraper/worker restent prioritaires.
 - `data/homepedia.db` comme preuve de l'exécution locale ;
 - noms anglais dans le code courant, français dans la base locale ;
 - principe d'un contrat de données canonique.
+- polling micro-batch périodique, distinct du vrai streaming ;
+- séparation `latest` / `history` / `runs` du temps réel.
 
 ### Notions fragiles
 
@@ -91,6 +93,7 @@ et scraper/worker restent prioritaires.
 - rôle de MongoDB versus SQLite ;
 - batch versus polling micro-batch ;
 - migrations versionnées et tests de contrat.
+- présenter explicitement une limite réelle à l'oral.
 
 ### Erreurs à corriger
 
@@ -104,6 +107,11 @@ et scraper/worker restent prioritaires.
     courant en anglais et la base locale surtout en français.
   - Formulation attendue : « Je constate une dérive de contrat à corriger par un
     schéma canonique, des migrations versionnées et des tests de contrat. »
+- Affirmation : « Homepedia gère l'immobilier. »
+  - Pourquoi elle est incorrecte : le projet analyse et visualise des données ;
+    il ne gère ni annonces, ni biens, ni transactions opérationnelles.
+  - Formulation attendue : « Homepedia est un prototype analytique qui permet de
+    comparer le marché immobilier français à partir de DVF et d'indicateurs INSEE. »
 
 ### Révisions programmées
 
@@ -114,11 +122,13 @@ et scraper/worker restent prioritaires.
 | Polling versus vrai streaming | 2 | 22/08/2026 | Employer batch et micro-batch périodique |
 | Divergence de schéma/branches | 4 | 27/08/2026 | Réponse correcte après reformulation |
 | MongoDB : collections et index | 3 | 24/08/2026 | Distinguer MongoDB et SQLite |
+| Sources DVF et INSEE | 2 | 22/08/2026 | Citer toutes les familles de sources dans le pitch |
+| Architecture globale | 2 | 22/08/2026 | Replacer précisément Spark et MongoDB |
 
 ### Objectifs de la séance suivante
 
 - réviser d'abord les erreurs J1–J4 ;
-- raconter le projet en deux minutes sans notes ;
+- raconter le projet en deux minutes sans notes, avec DVF, INSEE et une limite ;
 - distinguer tous les flux batch, Spark et temps réel ;
 - renforcer les fichiers centraux sans perdre la vision globale.
 
