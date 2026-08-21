@@ -16,6 +16,7 @@ services:
     environment:
       <<: *default-env
       STREAMLIT_SERVER_HEADLESS: "true"
+      REALTIME_DB_PATH: ${REALTIME_DB_PATH:-/app/data/realtime_price.db}
       MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
       MONGO_DB: ${MONGO_DB:-homepedia_buffer}
     volumes:
@@ -41,6 +42,7 @@ services:
       - ../.env
     environment:
       <<: *default-env
+      DB_PATH: ${REALTIME_DB_PATH:-/app/data/realtime_price.db}
       MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
       MONGO_DB: ${MONGO_DB:-homepedia_buffer}
     volumes:

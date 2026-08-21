@@ -84,8 +84,10 @@ Cette séparation est plus nette que dans le pipeline batch.
 
 ### Zone de présentation
 
-Le dashboard principal accède directement aux fichiers et à SQLite. La page
-temps réel lit seulement SQLite, même si le worker écrit aussi dans Mongo.
+Le dashboard principal lit `homepedia.db` en mode lecture seule avec retry. La
+page temps réel lit `realtime_price.db`, une petite base séparée du fichier
+analytique de 1,8 Go ; le worker écrit aussi dans Mongo. Cette séparation évite
+qu'une collecte périodique perturbe les lectures DVF sous Docker Desktop.
 Metabase monte `data/` en lecture seule, mais aucun dashboard Metabase n'est
 versionné (`src/app/streamlit_app.py`,
 `src/app/pages/06_Temps_reel_prix.py`, `infra/docker-compose.yml`).
@@ -139,8 +141,8 @@ tick worker
   -> parse HTML + score des tables
   -> PricePoint[]
   -> contrôle DQ
-  -> SQLite latest upsert
-  -> SQLite history si période/valeur change
+  -> realtime_price.db : latest upsert
+  -> realtime_price.db : history si période/valeur change
   -> Mongo raw/observations/latest
   -> journal du run SQLite même si erreur
   -> sleep(max(5, intervalle))
@@ -173,22 +175,24 @@ Kafka, Hadoop HDFS, RPC, RabbitMQ, REST métier et gRPC ne sont pas utilisés.
 
 ### SQLite
 
-État constaté le 30/07/2026 :
+État constaté le 21/08/2026 :
 
 | Table locale | Lignes | Rôle |
 |---|---:|---|
-| `transactions` | 5 814 960 | faits DVF |
-| `analyse_departementale` | 89 | agrégats prix départementaux |
-| `analyse_regionale` | 12 | agrégats multi-sources régionaux |
+| `transactions` | 1 884 593 | faits DVF nettoyés et dédoublonnés |
+| `analyse_departementale` | 94 | agrégats prix départementaux |
+| `analyse_regionale` | 13 | agrégats multi-sources régionaux |
 | `population` | 100 | population départementale |
 | `revenus` | 103 | revenu médian |
 | `chomage` | 100 | chômage |
 | `pauvrete` | 97 | pauvreté |
 | `realtime_price_latest` | 7 | dernier état par métrique |
 | `realtime_price_history` | 16 765 | changements de métriques |
-| `realtime_price_runs` | 5 113 | exécutions et erreurs |
+| `realtime_price_runs` | 5 400 | exécutions et erreurs |
 
-Source : `data/homepedia.db`, requêtes SQLite `-readonly`.
+Sources : `data/homepedia.db` pour l'analytique et
+`data/realtime_price.db` pour le flux périodique. Streamlit ouvre les deux en
+lecture seule avec six tentatives et un `busy_timeout` de 30 secondes.
 
 Indexes constatés : date, code postal, commune et index composite
 date/type/prix sur les transactions ; indexes temps réel sur métrique et
@@ -294,7 +298,8 @@ Preuves : `Dockerfile`, `infra/docker-compose.yml`.
 | fichier brut absent/schema modifié | batch échoue | relance manuelle après correction | validation de contrat en amont |
 | mémoire insuffisante pandas | ingestion DVF échoue | aucune automatique | lecture par chunks/Parquet |
 | job Spark échoue | agrégat absent/ancien | relance de cible Make | checkpoint/monitoring |
-| verrou SQLite | UI ou worker en erreur | timeout SQLite 30 s, prochain poll | WAL/busy policy/DB serveur |
+| SQLite momentanément indisponible | message utilisateur sans traceback | six retries, lecture seule, `busy_timeout` | supervision Docker |
+| concurrence analytique/temps réel | lectures DVF ralenties | bases SQLite séparées, WAL sur la base temps réel | DB serveur en production |
 | page INSEE change | zéro point ou erreur | run `error`, prochain poll | alerte, tests de contrat, fallback |
 | Mongo indisponible après SQLite | stores divergents | prochain run, upserts partiels | outbox/réconciliation |
 | export snapshot interrompu | collections Mongo partielles | relancer export complet | collection temporaire + swap |

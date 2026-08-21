@@ -1,5 +1,4 @@
 import os
-import sqlite3
 import hashlib
 import math
 from dataclasses import dataclass
@@ -9,6 +8,8 @@ from zoneinfo import ZoneInfo
 import numpy as np
 import pandas as pd
 import streamlit as st
+
+from app.db.sqlite_reader import connect_readonly
 
 try:
     import altair as alt
@@ -23,7 +24,7 @@ except Exception:
 
 PARIS_TZ = ZoneInfo("Europe/Paris")
 
-DB_PATH = os.getenv("DB_PATH", "/app/data/homepedia.db")
+DB_PATH = os.getenv("REALTIME_DB_PATH", os.getenv("DB_PATH", "/app/data/homepedia.db"))
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "300"))
 
 # UI refresh (par défaut = fréquence de collecte)
@@ -179,7 +180,7 @@ def _stable_noise(key: str) -> float:
 
 
 def _read_sqlite(query: str, params: tuple = ()) -> pd.DataFrame:
-    con = sqlite3.connect(DB_PATH)
+    con = connect_readonly(DB_PATH)
     try:
         df = pd.read_sql_query(query, con, params=params)
     finally:

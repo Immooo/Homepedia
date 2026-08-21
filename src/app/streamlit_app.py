@@ -28,6 +28,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from app.db.mongo_client import get_mongo_collection  # noqa: E402
+from app.db.sqlite_reader import connect_readonly  # noqa: E402
 
 COLS_NICE = {
     "code": "Département",
@@ -96,8 +97,15 @@ view = st.sidebar.radio(
 )
 
 # 3. Connexion à la base SQLite
-DB_PATH = os.path.join("data", "homepedia.db")
-conn = sqlite3.connect(DB_PATH)
+DB_PATH = os.getenv("DB_PATH", os.path.join("data", "homepedia.db"))
+try:
+    conn = connect_readonly(DB_PATH)
+except sqlite3.OperationalError:
+    st.error(
+        "La base analytique est momentanément indisponible. "
+        "Patiente quelques secondes puis recharge la page."
+    )
+    st.stop()
 
 # === VUE STANDARD ===
 if view == "Standard":

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import time
 from datetime import datetime, UTC
 
 from src.realtime_price.insee_scraper import PricePoint
@@ -78,9 +79,22 @@ def _iso(dt: datetime) -> str:
 
 
 def connect(db_path: str) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path, timeout=30)
-    conn.row_factory = sqlite3.Row
-    return conn
+    last_error: sqlite3.OperationalError | None = None
+    for attempt in range(6):
+        try:
+            conn = sqlite3.connect(db_path, timeout=30)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA busy_timeout = 30000")
+            conn.execute("PRAGMA journal_mode = WAL")
+            conn.execute("PRAGMA synchronous = NORMAL")
+            return conn
+        except sqlite3.OperationalError as exc:
+            last_error = exc
+            if attempt < 5:
+                time.sleep(0.5 * (attempt + 1))
+    raise sqlite3.OperationalError(
+        f"Base temps réel indisponible après plusieurs tentatives : {db_path}"
+    ) from last_error
 
 
 def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
