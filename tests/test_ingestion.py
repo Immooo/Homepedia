@@ -22,9 +22,9 @@ def table_rowcount(conn, table: str) -> int:
 # --- Paramétrage des jeux de données -------------------------------------
 CSV_TABLES = [
     ("population_dept.csv", "population"),
-    ("poverty_dept.csv", "poverty"),
-    ("unemployment_dept.csv", "unemployment"),
-    ("income_dept.csv", "income"),
+    ("poverty_dept.csv", "pauvrete"),
+    ("unemployment_dept.csv", "chomage"),
+    ("income_dept.csv", "revenus"),
 ]
 
 
@@ -56,6 +56,6 @@ def test_no_null_values(csv_name, table):
     conn = sqlite3.connect(DB_FILE)
     df = pd.read_sql_query(f"SELECT * FROM {table}", conn)
     conn.close()
-    # on exclut la colonne 'code'
-    numeric_cols = [c for c in df.columns if c != "code"]
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    assert numeric_cols, f"{table} ne contient aucune mesure numérique"
     assert df[numeric_cols].notna().all().all(), f"{table} possède des NULL !"

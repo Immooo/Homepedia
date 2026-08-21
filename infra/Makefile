@@ -1,10 +1,14 @@
 SHELL := /bin/bash
 COMPOSE := docker compose -f infra/docker-compose.yml --env-file .env
 
-.PHONY: help build rebuild up down logs ps health sh-app init-db etl-ls etl-valeurs etl-insee etl-agg etl-spark
+.PHONY: help build rebuild up down logs ps health sh-app init-db \
+        etl-ls etl-valeurs etl-insee etl-agg etl-spark etl-export etl-schema etl-all etl-fix \
+        rt-ls rt-up rt-down rt-restart rt-logs rt-ps rt-scrape-now rt-interval-60 rt-interval-300
 
 help:
-	@echo "Targets: build, rebuild, up, down, logs, ps, health, sh-app, init-db, etl-*"
+	@echo "Targets: build, rebuild, up, down, logs, ps, health, sh-app, init-db"
+	@echo "ETL targets: etl-ls, etl-insee, etl-valeurs, etl-spark, etl-agg, etl-export, etl-schema, etl-all, etl-fix"
+	@echo "Realtime targets: rt-ls, rt-up, rt-down, rt-restart, rt-logs, rt-ps, rt-scrape-now, rt-interval-60, rt-interval-300"
 
 build:
 	$(COMPOSE) build
@@ -36,18 +40,64 @@ init-db:
 	    con.execute('CREATE TABLE IF NOT EXISTS _bootstrap (id INTEGER PRIMARY KEY, created_at TEXT)'); \
 	    con.commit(); con.close(); print('DB ready at',db)"
 
-# Exécutions ETL à la demande (adapte si besoin)
 etl-ls:
-	@echo "ETL disponibles : valeursfoncieres, insee, agg, spark"
-
-etl-valeurs:
-	$(COMPOSE) exec app python src/backend/ingest_valeursfoncieres.py
+	@echo "ETL disponibles : etl-insee, etl-valeurs, etl-spark, etl-agg, etl-export, etl-schema, etl-all, etl-fix"
 
 etl-insee:
 	$(COMPOSE) exec app bash -lc "python src/backend/ingest_insee_population.py && python src/backend/ingest_insee_income.py && python src/backend/ingest_insee_unemployment.py && python src/backend/ingest_insee_poverty.py && python src/backend/ingest_insee_region.py"
 
+etl-valeurs:
+	$(COMPOSE) exec app python src/backend/ingest_valeursfoncieres.py
+
+etl-spark:
+	$(COMPOSE) --profile tools up --force-recreate --abort-on-container-exit --exit-code-from spark-submit spark-submit
+
 etl-agg:
 	$(COMPOSE) exec app python src/backend/aggregate_by_region.py
 
-etl-spark:
-	$(COMPOSE) exec app python src/backend/spark_dvf_analysis.py
+etl-export:
+	$(COMPOSE) exec app python src/etl/sqlite_to_mongo_all_tables.py
+
+etl-schema:
+	$(COMPOSE) exec app bash -lc "sqlite3 $${DB_PATH:-data/homepedia.db} '.tables' && echo '---' && sqlite3 $${DB_PATH:-data/homepedia.db} '.schema revenus' && echo '---' && sqlite3 $${DB_PATH:-data/homepedia.db} '.schema pauvrete' && echo '---' && sqlite3 $${DB_PATH:-data/homepedia.db} '.schema analyse_regionale'"
+
+etl-all: etl-insee etl-valeurs etl-spark etl-agg etl-export
+	@echo "✅ Pipeline complet terminé (INSEE + DVF + Spark + Agg + Export Mongo)"
+
+etl-fix: etl-valeurs etl-spark etl-agg etl-export
+	@echo "✅ Pipeline rapide terminé (DVF + Spark + Agg + Export Mongo)"
+
+
+# =========================
+# Realtime (polling scraping)
+# =========================
+
+rt-ls:
+	@echo "Realtime : rt-up, rt-down, rt-restart, rt-logs, rt-ps, rt-scrape-now"
+	@echo "Ajuster l'intervalle: rt-interval-60 (démo), rt-interval-300 (prod scolaire)"
+
+rt-up:
+	$(COMPOSE) up -d realtime-price
+
+rt-down:
+	$(COMPOSE) stop realtime-price
+
+rt-restart:
+	$(COMPOSE) restart realtime-price
+
+rt-logs:
+	$(COMPOSE) logs -f --tail=200 realtime-price
+
+rt-ps:
+	$(COMPOSE) ps realtime-price
+
+rt-scrape-now:
+	$(COMPOSE) exec app python -m src.realtime_price.scrape_once
+
+rt-interval-60:
+	@echo "⚠️ Démo : passe l'intervalle à 60s (nécessite relance du service)"
+	@powershell -ExecutionPolicy Bypass -Command "(Get-Content .env) -replace '^POLL_INTERVAL_SECONDS=.*','POLL_INTERVAL_SECONDS=60' | Set-Content .env"
+
+rt-interval-300:
+	@echo "✅ Remet l'intervalle à 300s (5min) (nécessite relance du service)"
+	@powershell -ExecutionPolicy Bypass -Command "(Get-Content .env) -replace '^POLL_INTERVAL_SECONDS=.*','POLL_INTERVAL_SECONDS=300' | Set-Content .env"

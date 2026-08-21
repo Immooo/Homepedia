@@ -3,7 +3,7 @@ import sqlite3
 
 import pandas as pd
 
-from backend.logging_setup import setup_logging
+from src.backend.logging_setup import setup_logging
 
 logger = setup_logging()
 
@@ -56,9 +56,9 @@ def main():
     # Save to SQLite
     logger.info("Insertion dans la base SQLite : %s", DB_PATH)
     conn = sqlite3.connect(DB_PATH)
-    df.to_sql("unemployment", conn, if_exists="replace", index=False)
+    df.to_sql("chomage", conn, if_exists="replace", index=False)
     conn.close()
-    logger.info("✅ Table 'unemployment' créée dans SQLite avec %d lignes.", len(df))
+    logger.info("✅ Table 'chomage' créée dans SQLite avec %d lignes.", len(df))
 
 
 if __name__ == "__main__":

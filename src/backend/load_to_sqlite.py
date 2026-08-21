@@ -14,7 +14,7 @@ from sqlalchemy import (
     create_engine,
 )
 
-from backend.logging_setup import setup_logging
+from src.backend.logging_setup import setup_logging
 
 logger = setup_logging()
 
@@ -51,10 +51,10 @@ population = Table(
 )
 
 poverty = Table(
-    "poverty",
+    "pauvrete",
     metadata,
     Column("code", String(2), primary_key=True),
-    Column("poverty_rate", Numeric(5, 2), nullable=False),
+    Column("taux_pauvrete", Numeric(5, 2), nullable=False),
 )
 
 
@@ -70,6 +70,10 @@ def main():
     df_tx = pd.read_csv(
         TX_CSV, parse_dates=["date_mutation"], dtype={"code_postal": str}
     )
+    df_tx["code_postal"] = (
+        df_tx["code_postal"].str.replace(r"\.0$", "", regex=True).str.zfill(5)
+    )
+    df_tx = df_tx[df_tx["code_postal"].str.fullmatch(r"\d{5}", na=False)]
     # Conversion colonne valeur_fonciere si nécessaire
     if df_tx["valeur_fonciere"].dtype == object:
         logger.info(
@@ -81,7 +85,14 @@ def main():
             .str.replace(",", ".", regex=False)
             .astype(float)
         )
-    df_tx.to_sql("transactions", engine, if_exists="append", index=False)
+    df_tx = (
+        df_tx[df_tx["valeur_fonciere"] >= 1_000]
+        .drop_duplicates()
+        .reset_index(drop=True)
+    )
+    df_tx.insert(0, "id", df_tx.index + 1)
+    # Chargement idempotent : relancer l'ETL ne doit jamais tripler les données.
+    df_tx.to_sql("transactions", engine, if_exists="replace", index=False)
     logger.info("Table 'transactions' chargée avec %d lignes.", len(df_tx))
 
     # Population
@@ -95,8 +106,8 @@ def main():
     logger.info("Lecture et chargement du CSV pauvreté : %s", POV_CSV)
     df_pov = pd.read_csv(POV_CSV, dtype={"code": str})
     df_pov["code"] = df_pov["code"].str.zfill(2)
-    df_pov.to_sql("poverty", engine, if_exists="append", index=False)
-    logger.info("Table 'poverty' chargée avec %d lignes.", len(df_pov))
+    df_pov.to_sql("pauvrete", engine, if_exists="replace", index=False)
+    logger.info("Table 'pauvrete' chargée avec %d lignes.", len(df_pov))
 
     logger.info("✅ Chargement dans SQLite terminé.")
 

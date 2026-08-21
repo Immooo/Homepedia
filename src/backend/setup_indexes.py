@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-from backend.logging_setup import setup_logging
+from src.backend.logging_setup import setup_logging
 
 logger = setup_logging()
 
@@ -34,6 +34,7 @@ def create_indexes(conn: sqlite3.Connection) -> None:
     # ---- DVF transactions ----
     safe_index(c, "transactions", "date_mutation", "date")
     safe_index(c, "transactions", "commune", "commune")
+    safe_index(c, "transactions", "type_local", "type_local")
 
     # composite : date_mutation + type_local + valeur_fonciere
     logger.info(
@@ -47,12 +48,12 @@ def create_indexes(conn: sqlite3.Connection) -> None:
     )
 
     # ---- Indicateurs INSEE ----
-    for tbl in ("unemployment", "income", "population", "poverty"):
+    for tbl in ("chomage", "revenus", "population", "pauvrete"):
         safe_index(c, tbl, "code", "code")
 
     # ---- Agrégats ----
-    safe_index(c, "spark_dept_analysis", "dept", "dept")
-    safe_index(c, "region_analysis", "code_region", "code_region")
+    safe_index(c, "analyse_departementale", "dept", "dept")
+    safe_index(c, "analyse_regionale", "code_region", "code_region")
 
     conn.commit()
     logger.info("✅ Indexes créés / vérifiés sans erreur.")
