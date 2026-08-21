@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, UTC
 from zoneinfo import ZoneInfo
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -207,7 +208,7 @@ def _load_latest() -> pd.DataFrame:
         PARIS_TZ
     )
 
-    infos = df["metric_uid"].apply(_metric_info)
+    infos = df["metric_uid"].astype(str).map(_metric_info)
     df["famille"] = infos.apply(lambda x: x.family)
     df["zone"] = infos.apply(lambda x: x.zone)
     df["type_bien"] = infos.apply(lambda x: x.type_bien if x.type_bien else "ensemble")
@@ -472,6 +473,18 @@ hist_asc = hist_desc.sort_values("scraped_at_paris", ascending=True).copy()
 jitter_default = info.jitter_default
 if ui_mock:
     max_amp = 10.0 if info.family == "indices" else 3.0
+    scenario = st.selectbox(
+        "Scénario de démonstration",
+        ["Marché volatil", "Hausse progressive", "Baisse progressive", "Marché stable"],
+        help="Génère une série crédible en mémoire uniquement ; aucune donnée n'est écrite en base.",
+    )
+    mock_points = st.slider(
+        "Nombre de points simulés",
+        min_value=30,
+        max_value=180,
+        value=90,
+        step=10,
+    )
     amp = st.slider(
         "Intensité du mock (plus = plus visible)",
         min_value=0.0,
@@ -481,28 +494,48 @@ if ui_mock:
     )
 else:
     amp = 0.0
+    scenario = "Marché stable"
+    mock_points = 0
 
-now_ts = datetime.now(PARIS_TZ).timestamp()
-wave = math.sin(now_ts / 5.0) * (amp * 0.25)
-
-
-def _mock_value(
-    metric_uid: str, scraped_at: str, base: float, amplitude: float
-) -> float:
-    if amplitude <= 0:
-        return base
-    n = _stable_noise(f"{metric_uid}|{scraped_at}")
-    return base + (n * amplitude) + wave
-
-
-hist_asc["valeur_affichee"] = hist_asc.apply(
-    lambda r: (
-        _mock_value(selected_uid, str(r["scraped_at"]), float(r["value"]), amp)
-        if ui_mock
-        else float(r["value"])
-    ),
-    axis=1,
-)
+if ui_mock:
+    end_time = pd.Timestamp.now(tz=PARIS_TZ).floor("s")
+    timestamps = pd.date_range(end=end_time, periods=mock_points, freq="30s")
+    progress = np.linspace(0.0, 1.0, mock_points)
+    trend_by_scenario = {
+        "Marché volatil": 0.15,
+        "Hausse progressive": 0.9,
+        "Baisse progressive": -0.9,
+        "Marché stable": 0.0,
+    }
+    trend = trend_by_scenario[scenario] * (progress - 0.5)
+    cycle = 0.45 * np.sin(progress * math.pi * 5)
+    noise = (
+        np.array(
+            [
+                _stable_noise(f"{selected_uid}|{scenario}|{i}")
+                for i in range(mock_points)
+            ]
+        )
+        * 0.25
+    )
+    simulated = current_value + amp * (trend + cycle + noise)
+    hist_asc = pd.DataFrame(
+        {
+            "metric_uid": selected_uid,
+            "period": current_period,
+            "value": current_value,
+            "scraped_at": timestamps.astype(str),
+            "scraped_at_paris": timestamps,
+            "valeur_affichee": simulated,
+        }
+    )
+    last_point_dt = timestamps.max()
+    st.info(
+        "Mode démonstration actif : série simulée, déterministe et non persistée. "
+        "La valeur INSEE brute reste visible pour comparaison."
+    )
+else:
+    hist_asc["valeur_affichee"] = hist_asc["value"].astype(float)
 
 # --------- Graph (chronologique)
 plot_df = hist_asc[["scraped_at_paris", "value", "valeur_affichee"]].copy()
@@ -515,6 +548,17 @@ plot_df.rename(
 )
 
 chart_title = f"{selected_label} — {info.unit_text}"
+
+displayed_latest = float(plot_df["Valeur affichée"].iloc[-1])
+displayed_first = float(plot_df["Valeur affichée"].iloc[0])
+displayed_delta = displayed_latest - displayed_first
+k1, k2, k3 = st.columns(3)
+k1.metric(f"Valeur INSEE — {info.unit_text}", f"{current_value:.2f}")
+k2.metric(
+    f"Dernière valeur {'simulée' if ui_mock else 'affichée'}",
+    f"{displayed_latest:.2f}",
+)
+k3.metric("Variation sur la période affichée", f"{displayed_delta:+.2f}")
 
 if alt is not None:
     base = alt.Chart(plot_df).encode(
@@ -547,9 +591,22 @@ st.caption(f"Dernier scraping (latest) : {_fmt_dt_paris(current_scraped_at_paris
 # --------- Tableau (plus récent -> plus ancien)
 st.markdown("**Historique (du plus récent au plus ancien)**")
 
-table_df = hist_desc[["scraped_at_paris", "value"]].copy()
+table_df = hist_asc[["scraped_at_paris", "value", "valeur_affichee"]].copy()
+table_df = table_df.sort_values("scraped_at_paris", ascending=False)
 table_df["Date/heure (Paris)"] = table_df["scraped_at_paris"].apply(_fmt_dt_paris)
-table_df.rename(columns={"value": info.value_header}, inplace=True)
-table_df = table_df[["Date/heure (Paris)", info.value_header]]
+table_df.rename(
+    columns={
+        "value": f"{info.value_header} brute",
+        "valeur_affichee": (
+            f"{info.value_header} simulée" if ui_mock else info.value_header
+        ),
+    },
+    inplace=True,
+)
+value_columns = [
+    f"{info.value_header} brute",
+    f"{info.value_header} simulée" if ui_mock else info.value_header,
+]
+table_df = table_df[["Date/heure (Paris)", *dict.fromkeys(value_columns)]]
 
 st.dataframe(table_df, hide_index=True, use_container_width=True)

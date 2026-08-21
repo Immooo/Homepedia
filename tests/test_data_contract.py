@@ -1,5 +1,8 @@
 import sqlite3
 
+import numpy as np
+import pandas as pd
+
 
 DB_FILE = "data/homepedia.db"
 
@@ -91,3 +94,24 @@ def test_geographic_and_price_aggregates_are_coherent():
     assert invalid_postcodes == 0
     assert invalid_departments == 0
     assert corsica == 1
+
+
+def test_regional_correlation_matrix_is_mathematically_coherent():
+    columns = [
+        "prix_m2_moyen",
+        "population",
+        "revenu_median",
+        "taux_chomage",
+        "taux_pauvrete",
+    ]
+    with sqlite3.connect(DB_FILE) as conn:
+        regional = pd.read_sql_query(
+            f"SELECT {', '.join(columns)} FROM analyse_regionale", conn
+        )
+
+    correlation = regional.corr()
+    assert list(correlation.columns) == columns
+    assert np.allclose(correlation.to_numpy(), correlation.to_numpy().T)
+    assert np.allclose(np.diag(correlation), 1.0)
+    assert correlation.to_numpy().min() >= -1.0
+    assert correlation.to_numpy().max() <= 1.0

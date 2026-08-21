@@ -38,6 +38,8 @@ kaggle.json
 *.parquet
 *.h5
 *.db
+*.db-shm
+*.db-wal
 *.sqlite3
 data/homepedia.db
 mongo_dump_homepedia/

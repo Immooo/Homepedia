@@ -46,8 +46,10 @@ COLS_NICE = {
     "prix_m2_moyen": "Prix moyen €/m²",
     "prix_m2": "Prix €/m²",
     "population": "Population",
+    "revenu_median": "Revenu médian €",
     "income_median": "Revenu médian €",
     "taux_chomage": "Taux chômage %",
+    "taux_pauvrete": "Taux pauvreté %",
     "poverty_rate": "Taux pauvreté %",
     "income": "Revenu médian € ",
     "unemployment": "Taux chômage % ",
@@ -222,6 +224,10 @@ if view == "Standard":
         start_date, end_date, choix_type, price_range[0], price_range[1], max_rows
     )
     total_transactions = sql_scalar("SELECT COUNT(*) FROM transactions")
+
+    if tx.empty:
+        st.warning("Aucune transaction ne correspond à ces filtres.")
+        st.stop()
 
     # --- KPIs & export ---
     col1, col2, col3 = st.columns(3)
@@ -468,7 +474,24 @@ elif view == "Indicateurs Socio-éco":
     )
 
     # Filtre chômage
-    df_chom = df_chom.query("@min_c <= taux_chomage <= @max_c")
+    socio = (
+        df_chom.merge(df_inc, on="code", how="inner")
+        .merge(df_pop, on="code", how="inner")
+        .merge(df_pov, on="code", how="inner")
+    )
+    socio = socio.query("@min_c <= taux_chomage <= @max_c").copy()
+    selected_codes = set(socio["code"])
+    df_chom = df_chom[df_chom["code"].isin(selected_codes)].copy()
+    df_inc = df_inc[df_inc["code"].isin(selected_codes)].copy()
+    df_pop = df_pop[df_pop["code"].isin(selected_codes)].copy()
+    df_pov = df_pov[df_pov["code"].isin(selected_codes)].copy()
+
+    st.sidebar.caption(
+        f"Filtre commun appliqué à toutes les vues : {len(selected_codes)} départements."
+    )
+    if socio.empty:
+        st.warning("Aucun département ne correspond à cette plage de chômage.")
+        st.stop()
 
     # Onglets
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
@@ -581,12 +604,11 @@ elif view == "Indicateurs Socio-éco":
     # --- Matrice corrélation ---
     with tab6:
         st.subheader("Matrice de corrélations multiples")
-        df_all = (
-            df_chom.merge(df_inc, on="code")
-            .merge(df_pop, on="code")
-            .merge(df_pov, on="code")
+        st.info(
+            "Chaque case est un coefficient indépendant compris entre -1 et +1. "
+            "Les coefficients d'une ligne ne sont pas des pourcentages et ne doivent pas totaliser 1."
         )
-        corr = df_all[
+        corr = socio[
             ["taux_chomage", "income_median", "population", "poverty_rate"]
         ].corr()
         fig6, ax6 = plt.subplots()
@@ -600,7 +622,6 @@ elif view == "Indicateurs Socio-éco":
             for j in range(len(corr)):
                 val = corr.iat[i, j]
                 val_f = np.asarray(val, dtype="float64")
-                color = "white" if abs(val_f) > 0.5 else "black"
                 color = "white" if abs(val_f) > 0.5 else "black"
                 ax6.text(j, i, f"{val:.2f}", ha="center", va="center", color=color)
         fig6.colorbar(cax, ax=ax6, fraction=0.046, pad=0.04)
@@ -628,26 +649,31 @@ elif view == "Région":
         )
         return geo
 
-    df_region = load_region_df()
+    df_region_all = load_region_df()
     geo_reg = load_region_geo(os.path.join("data", "raw", "geo", "regions.geojson"))
 
-    st.subheader("Aperçu des données régionales")
-    show(df_region)
-
     # 3) Slider population (inchangé)
-    pop_min = int(df_region["population"].min())
-    pop_max = int(df_region["population"].max())
-    borne_min = (pop_min // 2_000_000) * 2_000_000
-    borne_max = ((pop_max // 2_000_000) + 1) * 2_000_000
-    st.sidebar.subheader("Plage de population (pas 2 M)")
+    pop_min = int(df_region_all["population"].min())
+    pop_max = int(df_region_all["population"].max())
+    borne_min = (pop_min // 500_000) * 500_000
+    borne_max = ((pop_max // 500_000) + 1) * 500_000
+    st.sidebar.subheader("Filtre régional")
     x_range = st.sidebar.slider(
         "Population",
         min_value=borne_min,
         max_value=borne_max,
         value=(borne_min, borne_max),
-        step=2_000_000,
+        step=500_000,
         format="%d",
     )
+    df_region = df_region_all.query("@x_range[0] <= population <= @x_range[1]").copy()
+    st.sidebar.caption(f"{len(df_region)} région(s) sélectionnée(s).")
+    if df_region.empty:
+        st.warning("Aucune région ne correspond à cette plage de population.")
+        st.stop()
+
+    st.subheader("Aperçu des données régionales filtrées")
+    show(df_region)
 
     # 4) Merge + carte Folium
     geo_plot = geo_reg.merge(
@@ -693,15 +719,19 @@ elif view == "Région":
     st.pyplot(fig_sp)
 
     st.subheader("Matrice de corrélations régionales")
+    st.caption(
+        "Coefficients indépendants entre -1 et +1 : ils mesurent la force d'une relation, "
+        "ils ne s'additionnent pas pour former 100 %."
+    )
 
     @st.cache_data
     def compute_region_corr(df: pd.DataFrame) -> pd.DataFrame:
         features = [
             "prix_m2_moyen",
             "population",
-            "income_median",
+            "revenu_median",
             "taux_chomage",
-            "poverty_rate",
+            "taux_pauvrete",
         ]
         cols = [c for c in features if c in df.columns]
         return df[cols].corr() if len(cols) > 1 else pd.DataFrame()
