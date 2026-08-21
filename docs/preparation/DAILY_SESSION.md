@@ -61,6 +61,8 @@ Deux ou trois phrases maximum.
 ## Séance J5 — 2026-08-21
 
 - Durée : bloc du matin, séance interactive d'environ 1 heure
+- Suivi temporel : début 10 h 07 ; pause à 10 h 43 ; 36 minutes actives
+- Règle pour la suite : annoncer début, pause, reprise et durée active à chaque bloc
 - Questions posées : 20
 - Note moyenne : 8,3/10
 - Exercice oral : présentation spontanée de la chaîne complète Homepedia
