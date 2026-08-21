@@ -9,9 +9,9 @@
 | Champ | Valeur |
 |---|---|
 | Programme | En cours |
-| Prochaine séance | Jour 5 — Révision cumulative 1 |
-| Commande | `Commence le jour 5` |
-| Dernière séance | J4 — 20/08/2026 |
+| Prochaine séance | Jour 6 — Ingestion DVF et qualité batch |
+| Commande | `Commence le jour 6` |
+| Dernière séance | J5 — 21/08/2026 |
 | Calendrier | Réorganisé du 20/08/2026 au 03/09/2026 : 2 h lun.–mer., doubles blocs jeu.–ven. |
 | Jours tampon | Samedi léger facultatif ; dimanche libre ; 04/09 en filet de sécurité |
 | Point prioritaire | Consolider SQLite/MongoDB, les fichiers temps réel et la divergence de schéma avant d'ajouter du contenu |
@@ -57,6 +57,53 @@ Deux ou trois phrases maximum.
 ```
 
 ## Historique
+
+## Séance J5 — 2026-08-21
+
+- Durée : bloc du matin, séance interactive d'environ 1 heure
+- Questions posées : 20
+- Note moyenne : 8,3/10
+- Exercice oral : présentation spontanée de la chaîne complète Homepedia
+- Résultat : révision cumulative réussie ; les notions batch, sources INSEE, schéma divergent et idempotence progressent nettement
+
+### Résumé très court
+
+Tu as retrouvé un récit global cohérent et tu réponds correctement aux questions
+sur DVF, INSEE, Spark, SQLite, polling et agrégation. Les points à surveiller
+restent la précision du pitch, la distinction entre collecte et publication, et
+les trois catégories `latest/history/runs` lorsque la question est posée rapidement.
+
+### Notions maîtrisées
+
+- séparation des sources INSEE fichiers et indices HTML périodiques ;
+- intérêt de la pré-agrégation Spark et perte du détail transactionnel ;
+- divergence code/base et contrat de données canonique ;
+- rôle de SQLite pour la concurrence locale et rôle du mainteneur ;
+- `runs` à chaque tentative et `history` seulement si période ou valeur change ;
+- risque de duplication avec `append` et principe d'idempotence.
+
+### Notions fragiles
+
+- formuler un pitch concis sans dire que le projet « gère » l'immobilier ;
+- expliquer pourquoi cinq minutes de polling ne signifient pas une publication toutes les cinq minutes ;
+- citer deux preuves chiffrées complètes sans aide ;
+- détailler `latest/history/runs` sous pression.
+
+### Révisions programmées
+
+| Notion | Niveau | Prochaine révision | Motif |
+|---|---:|---|---|
+| Problème métier et pitch | 3 | 25/08/2026 | Rendre la présentation plus concise |
+| Sources DVF et INSEE | 4 | 28/08/2026 | Distinction fichiers/HTML acquise |
+| Polling versus vrai streaming | 3 | 25/08/2026 | Revoir collecte versus publication |
+| Latest/history/runs | 2 | 23/08/2026 | Réactivation nécessaire sous question rapide |
+| Idempotence des batchs | 4 | 28/08/2026 | Risque `append` compris |
+
+### Objectifs de la séance suivante
+
+- expliquer le nettoyage DVF étape par étape ;
+- distinguer doublon, valeur manquante, valeur invalide et non-idempotence ;
+- défendre `append`, `replace` et une clé naturelle avec leurs compromis.
 
 ## Séance J4 — 2026-08-20
 

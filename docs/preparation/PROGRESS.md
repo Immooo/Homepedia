@@ -18,26 +18,26 @@
 
 | Notion | Importance | Niveau 0–5 | Dernière révision | Bonnes réponses | Erreurs | Prochaine révision | Commentaire |
 |---|---|---:|---|---:|---:|---|---|
-| Problème métier et pitch | Critique | 2 | 20/08/2026 | 1 | 2 | 22/08/2026 | Récit immobilier territorial présent ; remplacer « gérer l'immobilier », citer DVF + INSEE et distinguer données réelles de l'objectif de qualité |
-| Sources DVF et INSEE | Critique | 2 | 20/08/2026 | 1 | 1 | 22/08/2026 | DVF cité dans le récit ; ajouter systématiquement population, revenu, chômage, pauvreté et indices INSEE |
-| Entrées, sorties et utilisateurs | Haute | 4 | 20/08/2026 | 3 | 1 | 27/08/2026 | Distingue clairement pandas, SQLite et Streamlit ; revoir aussi exports et rôles de maintenance |
-| Architecture globale | Critique | 2 | 20/08/2026 | 2 | 1 | 22/08/2026 | Récit global tenu, mais Spark, MongoDB et les lectures Streamlit doivent être positionnés plus précisément |
-| Parcours d'une transaction DVF | Critique | 3 | 14/08/2026 | 1 | 1 | 18/08/2026 | Parcours compris ; distinguer CSV, table détaillée et agrégat |
+| Problème métier et pitch | Critique | 3 | 21/08/2026 | 2 | 2 | 25/08/2026 | Chaîne complète et Spark cités ; rendre le pitch plus concis et distinguer les sources INSEE fichiers du scraping temps réel |
+| Sources DVF et INSEE | Critique | 4 | 21/08/2026 | 2 | 2 | 28/08/2026 | Distingue correctement les fichiers socio-économiques INSEE des indices de prix collectés périodiquement sur la page HTML |
+| Entrées, sorties et utilisateurs | Haute | 4 | 21/08/2026 | 5 | 1 | 28/08/2026 | Explique le diagnostic, la correction et la vérification anti-régression du rôle de mainteneur |
+| Architecture globale | Critique | 3 | 21/08/2026 | 3 | 1 | 25/08/2026 | Chaîne globale et Spark correctement replacés ; préciser MongoDB comme complément du temps réel et SQLite comme lecture principale de Streamlit |
+| Parcours d'une transaction DVF | Critique | 4 | 21/08/2026 | 2 | 1 | 28/08/2026 | Distingue donnée brute et traitée ; consolider les niveaux CSV détaillé, table SQLite et agrégat Spark |
 | Parcours d'un indicateur INSEE | Haute | 3 | 14/08/2026 | 1 | 0 | 18/08/2026 | Parcours général correct ; retenir FILOSOFI, code commune→département et Parquet |
 | Parcours d'un indice temps réel | Critique | 3 | 20/08/2026 | 1 | 1 | 24/08/2026 | Parcours complet globalement correct : page INSEE → polling/scraper → DQ → SQLite/MongoDB → Streamlit ; dire « périodique », pas « ponctuel » |
 | Fichiers et composants centraux | Haute | 3 | 20/08/2026 | 1 | 6 | 24/08/2026 | `worker.py` correctement placé sur le temps réel ; priorité actuelle : maîtriser les rôles avant les noms de fichiers |
-| État local et preuves chiffrées | Haute | 4 | 20/08/2026 | 2 | 0 | 27/08/2026 | Retient environ 5,8 millions de transactions et `data/homepedia.db` comme preuve d'exécution locale |
-| Divergence de schéma/branches | Critique | 4 | 20/08/2026 | 3 | 2 | 27/08/2026 | Retient contrat de données canonique ; consolider migrations versionnées et tests de contrat |
-| Ingestion et nettoyage DVF | Critique | 4 | 20/08/2026 | 2 | 0 | 27/08/2026 | pandas correctement associé aux scripts ETL : extraction, transformation et chargement des données |
-| Idempotence des batchs | Critique | 0 | Jamais | 0 | 0 | J6 | `append` à discuter |
+| État local et preuves chiffrées | Haute | 4 | 21/08/2026 | 3 | 1 | 28/08/2026 | Retient environ 5,8 millions de transactions et 5 113 exécutions du worker comme preuves d'exécution locale |
+| Divergence de schéma/branches | Critique | 4 | 21/08/2026 | 5 | 3 | 28/08/2026 | Propose correctement un nommage canonique ; ajouter migrations versionnées et tests de contrat pour l'imposer |
+| Ingestion et nettoyage DVF | Critique | 3 | 21/08/2026 | 4 | 0 | 25/08/2026 | Comprend normalisation et dédoublonnage ; relier les doublons au biais sur nombre de ventes et prix moyen |
+| Idempotence des batchs | Critique | 4 | 21/08/2026 | 1 | 0 | 28/08/2026 | Comprend qu'un second `append` peut dupliquer les faits et fausser les agrégats |
 | Ingestion des indicateurs INSEE | Haute | 0 | Jamais | 0 | 0 | J7 | Non évalué |
 | Codes géographiques Corse/DOM | Haute | 0 | Jamais | 0 | 0 | J7 | Plusieurs implémentations incohérentes |
-| Agrégations et biais statistiques | Haute | 4 | 20/08/2026 | 3 | 0 | 27/08/2026 | Comprend le gain de performance et la perte du détail transactionnel après agrégation |
+| Agrégations et biais statistiques | Haute | 3 | 21/08/2026 | 4 | 0 | 25/08/2026 | Comprend l'agrégat comme résumé rapide ; dire groupBy département et préciser les mesures calculées plutôt que « données similaires » |
 | Jointures et clés géographiques | Haute | 2 | 14/08/2026 | 0 | 1 | 16/08/2026 | Idée générale correcte ; jointure sur code, pas simplement sur fichiers |
 | Usage réel de Spark | Critique | 4 | 20/08/2026 | 1 | 1 | 27/08/2026 | Spark correctement associé à la pré-agrégation des transactions DVF ; revoir ensuite session locale et absence de cluster démontré |
 | `toPandas()` et frontière driver | Haute | 0 | Jamais | 0 | 0 | J8 | Non évalué |
 | CSV, Parquet et partitionnement | Haute | 0 | Jamais | 0 | 0 | J8 | Non évalué |
-| SQLite : rôle, index, limites | Critique | 3 | 20/08/2026 | 2 | 0 | 24/08/2026 | Stockage après ETL correctement identifié ; préciser faits, indicateurs, agrégats, temps réel et service direct de l'UI |
+| SQLite : rôle, index, limites | Critique | 3 | 21/08/2026 | 3 | 0 | 25/08/2026 | Connaît la limite de concurrence ; expliquer les verrous d'écriture et l'absence de scale-out pour un passage à l'échelle |
 | MongoDB : collections et index | Haute | 4 | 20/08/2026 | 2 | 2 | 27/08/2026 | Distingue MongoDB de SQLite : Streamlit lit principalement SQLite ; MongoDB complète le temps réel |
 | Docker Compose et déploiement | Haute | 3 | 14/08/2026 | 1 | 0 | 18/08/2026 | Comprend conteneurs isolés et services |
 | Orchestration Make/PowerShell | Moyenne | 4 | 20/08/2026 | 1 | 0 | 27/08/2026 | Batch correctement identifié comme lancé ponctuellement ; préciser ensuite Make/PowerShell et l'absence de scheduler |
@@ -45,9 +45,9 @@
 | Justification MongoDB | Haute | 0 | Jamais | 0 | 0 | J11 | Non évalué |
 | Double écriture et cohérence | Critique | 4 | 20/08/2026 | 2 | 1 | 27/08/2026 | Propose une réconciliation qui détecte les divergences et rejoue les écritures manquantes |
 | Justification Spark/pandas | Critique | 2 | 12/08/2026 | 0 | 1 | 13/08/2026 | Comprend le principe, doit distinguer pandas en mémoire et Spark distribué |
-| Polling versus vrai streaming | Critique | 4 | 20/08/2026 | 3 | 2 | 27/08/2026 | Emploie correctement « polling micro-batch périodique » et le distingue du vrai streaming |
+| Polling versus vrai streaming | Critique | 3 | 21/08/2026 | 4 | 3 | 25/08/2026 | Kafka jugé à juste titre disproportionné ; préciser qu'il n'apporte pas de source événementielle à une page HTML consultée périodiquement |
 | DQ des `PricePoint` | Haute | 4 | 20/08/2026 | 1 | 0 | 27/08/2026 | Contrôles DQ correctement associés à la présence, au format et à la validité des données avant stockage |
-| Latest/history/runs | Critique | 4 | 20/08/2026 | 4 | 1 | 27/08/2026 | Retient que `history` s'ajoute si la valeur ou la période change ; `runs` garde toutes les tentatives |
+| Latest/history/runs | Critique | 4 | 21/08/2026 | 6 | 2 | 28/08/2026 | Explique que l'historique garde seulement les changements significatifs et évite les doublons de collecte |
 | Upsert, unicité, exactly-once | Critique | 0 | Jamais | 0 | 0 | J13 | Garanties partielles |
 | Performance et goulots | Critique | 0 | Jamais | 0 | 0 | J14 | Non évalué |
 | Scalabilité et architecture cible | Haute | 0 | Jamais | 0 | 0 | J14 | Non évalué |
@@ -79,9 +79,9 @@
 
 | Indicateur | Valeur initiale |
 |---|---:|
-| Séances terminées | 4 / 21 |
-| Questions évaluées | 78 |
-| Moyenne des notes | 7,4 / 10 |
-| Notions critiques ≥ 4/5 | 4 |
+| Séances terminées | 5 / 21 |
+| Questions évaluées | 98 |
+| Moyenne des notes | 7,6 / 10 |
+| Notions critiques ≥ 4/5 | 8 |
 | Présentations complètes réalisées | 0 |
-| Dernière séance | J4 — 20/08/2026 |
+| Dernière séance | J5 — 21/08/2026 |
