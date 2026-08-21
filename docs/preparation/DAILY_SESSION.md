@@ -60,11 +60,11 @@ Deux ou trois phrases maximum.
 
 ## Séance J5 — 2026-08-21
 
-- Durée : bloc du matin, séance interactive d'environ 1 heure
-- Suivi temporel : début 10 h 07 ; pause à 10 h 43 ; 36 minutes actives
+- Durée : bloc du matin + rappel court, séance interactive d'environ 1 h 20 au total
+- Suivi temporel : début 10 h 07 ; pause à 10 h 43 ; reprise à 11 h 39 ; environ 50 minutes actives
 - Règle pour la suite : annoncer début, pause, reprise et durée active à chaque bloc
-- Questions posées : 20
-- Note moyenne : 8,3/10
+- Questions posées : 23 évaluées (une question chiffrée annulée à la demande de l'apprenant)
+- Note moyenne : 8,0/10
 - Exercice oral : présentation spontanée de la chaîne complète Homepedia
 - Résultat : révision cumulative réussie ; les notions batch, sources INSEE, schéma divergent et idempotence progressent nettement
 

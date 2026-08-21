@@ -26,7 +26,7 @@
 | Parcours d'un indicateur INSEE | Haute | 3 | 14/08/2026 | 1 | 0 | 18/08/2026 | Parcours général correct ; retenir FILOSOFI, code commune→département et Parquet |
 | Parcours d'un indice temps réel | Critique | 3 | 20/08/2026 | 1 | 1 | 24/08/2026 | Parcours complet globalement correct : page INSEE → polling/scraper → DQ → SQLite/MongoDB → Streamlit ; dire « périodique », pas « ponctuel » |
 | Fichiers et composants centraux | Haute | 3 | 20/08/2026 | 1 | 6 | 24/08/2026 | `worker.py` correctement placé sur le temps réel ; priorité actuelle : maîtriser les rôles avant les noms de fichiers |
-| État local et preuves chiffrées | Haute | 4 | 21/08/2026 | 3 | 1 | 28/08/2026 | Retient environ 5,8 millions de transactions et 5 113 exécutions du worker comme preuves d'exécution locale |
+| État local et preuves chiffrées | Haute | 2 | 21/08/2026 | 3 | 2 | 23/08/2026 | Identifie `history` comme preuve mais oublie le chiffre ; retenir 16 765 changements ou 5 113 runs |
 | Divergence de schéma/branches | Critique | 4 | 21/08/2026 | 5 | 3 | 28/08/2026 | Propose correctement un nommage canonique ; ajouter migrations versionnées et tests de contrat pour l'imposer |
 | Ingestion et nettoyage DVF | Critique | 3 | 21/08/2026 | 4 | 0 | 25/08/2026 | Comprend normalisation et dédoublonnage ; relier les doublons au biais sur nombre de ventes et prix moyen |
 | Idempotence des batchs | Critique | 4 | 21/08/2026 | 1 | 0 | 28/08/2026 | Comprend qu'un second `append` peut dupliquer les faits et fausser les agrégats |
@@ -47,13 +47,13 @@
 | Justification Spark/pandas | Critique | 2 | 12/08/2026 | 0 | 1 | 13/08/2026 | Comprend le principe, doit distinguer pandas en mémoire et Spark distribué |
 | Polling versus vrai streaming | Critique | 3 | 21/08/2026 | 4 | 3 | 25/08/2026 | Kafka jugé à juste titre disproportionné ; préciser qu'il n'apporte pas de source événementielle à une page HTML consultée périodiquement |
 | DQ des `PricePoint` | Haute | 4 | 20/08/2026 | 1 | 0 | 27/08/2026 | Contrôles DQ correctement associés à la présence, au format et à la validité des données avant stockage |
-| Latest/history/runs | Critique | 4 | 21/08/2026 | 6 | 2 | 28/08/2026 | Explique que l'historique garde seulement les changements significatifs et évite les doublons de collecte |
+| Latest/history/runs | Critique | 4 | 21/08/2026 | 7 | 2 | 28/08/2026 | Distingue les trois rôles ; préciser que `runs` journalise chaque tentative avec son succès ou son erreur |
 | Upsert, unicité, exactly-once | Critique | 0 | Jamais | 0 | 0 | J13 | Garanties partielles |
 | Performance et goulots | Critique | 0 | Jamais | 0 | 0 | J14 | Non évalué |
 | Scalabilité et architecture cible | Haute | 0 | Jamais | 0 | 0 | J14 | Non évalué |
 | Reprise après panne partielle | Critique | 0 | Jamais | 0 | 0 | J16 | Non évalué |
 | Qualité des données et tests | Critique | 0 | Jamais | 0 | 0 | J17 | Couverture actuelle faible |
-| Observabilité et alertes | Haute | 0 | Jamais | 0 | 0 | J17 | Logs/runs présents, alertes absentes |
+| Observabilité et alertes | Haute | 2 | 21/08/2026 | 0 | 1 | 23/08/2026 | Sait chercher une trace dans MongoDB ; retenir aussi `realtime_price_runs` dans SQLite comme preuve directe, et l'absence d'alertes externes |
 | Sécurité et secrets | Haute | 0 | Jamais | 0 | 0 | J18 | Mongo exposé sans auth Compose |
 | Corrélation versus causalité | Haute | 0 | Jamais | 0 | 0 | J18 | Non évalué |
 | Limites et améliorations | Critique | 0 | Jamais | 0 | 0 | J18 | Non évalué |
@@ -80,7 +80,7 @@
 | Indicateur | Valeur initiale |
 |---|---:|
 | Séances terminées | 5 / 21 |
-| Questions évaluées | 98 |
+| Questions évaluées | 101 |
 | Moyenne des notes | 7,6 / 10 |
 | Notions critiques ≥ 4/5 | 8 |
 | Présentations complètes réalisées | 0 |
