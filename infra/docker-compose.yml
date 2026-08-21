@@ -17,7 +17,7 @@ services:
       <<: *default-env
       STREAMLIT_SERVER_HEADLESS: "true"
       MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
-      MONGO_DB: ${MONGO_DB:-homepedia}
+      MONGO_DB: ${MONGO_DB:-homepedia_buffer}
     volumes:
       - ../data:/app/data:rw
       - ../src:/app/src:rw
@@ -27,7 +27,7 @@ services:
       - "${STREAMLIT_SERVER_PORT:-8501}:8501"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8501/healthz || exit 1"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/healthz', timeout=3)"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -73,6 +73,62 @@ services:
       - "27017:27017"
     volumes:
       - ../mongo_data:/data/db
+
+  spark-master:
+    build:
+      context: ..
+      dockerfile: Dockerfile.spark
+    image: homepedia-spark:3.5.1
+    container_name: homepedia-spark-master
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master", "--host", "spark-master"]
+    ports:
+      - "7077:7077"
+      - "8080:8080"
+    volumes:
+      - ../data:/app/data:ro
+      - ../src:/app/src:ro
+    restart: unless-stopped
+
+  spark-worker-1:
+    image: homepedia-spark:3.5.1
+    container_name: homepedia-spark-worker-1
+    depends_on:
+      - spark-master
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077", "--cores", "1", "--memory", "1g"]
+    volumes:
+      - ../data:/app/data:ro
+      - ../src:/app/src:ro
+    restart: unless-stopped
+
+  spark-worker-2:
+    image: homepedia-spark:3.5.1
+    container_name: homepedia-spark-worker-2
+    depends_on:
+      - spark-master
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077", "--cores", "1", "--memory", "1g"]
+    volumes:
+      - ../data:/app/data:ro
+      - ../src:/app/src:ro
+    restart: unless-stopped
+
+  spark-submit:
+    image: homepedia-spark:3.5.1
+    container_name: homepedia-spark-submit
+    profiles: ["tools"]
+    depends_on:
+      - spark-master
+      - spark-worker-1
+      - spark-worker-2
+    environment:
+      SPARK_MASTER_URL: spark://spark-master:7077
+      SPARK_DRIVER_HOST: spark-submit
+      DB_PATH: /app/data/homepedia.db
+      DVF_PROCESSED_PATH: /app/data/processed/transactions_2024.csv
+      PYTHONPATH: /app
+    command: ["/opt/spark/bin/spark-submit", "--master", "spark://spark-master:7077", "/app/src/backend/spark_dvf_analysis.py"]
+    volumes:
+      - ../data:/app/data:rw
+      - ../src:/app/src:ro
 
 volumes:
   metabase-data:

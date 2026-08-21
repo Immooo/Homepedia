@@ -28,7 +28,7 @@
 | Fichiers et composants centraux | Haute | 3 | 20/08/2026 | 1 | 6 | 24/08/2026 | `worker.py` correctement placé sur le temps réel ; priorité actuelle : maîtriser les rôles avant les noms de fichiers |
 | État local et preuves chiffrées | Haute | 2 | 21/08/2026 | 3 | 2 | 23/08/2026 | Identifie `history` comme preuve mais oublie le chiffre ; retenir 16 765 changements ou 5 113 runs |
 | Divergence de schéma/branches | Critique | 4 | 21/08/2026 | 5 | 3 | 28/08/2026 | Propose correctement un nommage canonique ; ajouter migrations versionnées et tests de contrat pour l'imposer |
-| Ingestion et nettoyage DVF | Critique | 3 | 21/08/2026 | 4 | 0 | 25/08/2026 | Comprend normalisation et dédoublonnage ; relier les doublons au biais sur nombre de ventes et prix moyen |
+| Ingestion et nettoyage DVF | Critique | 2 | 21/08/2026 | 4 | 1 | 23/08/2026 | Distinguer la normalisation des en-têtes de colonnes des contrôles de qualité et du dédoublonnage ; relier les doublons au biais sur nombre de ventes et prix moyen |
 | Idempotence des batchs | Critique | 4 | 21/08/2026 | 1 | 0 | 28/08/2026 | Comprend qu'un second `append` peut dupliquer les faits et fausser les agrégats |
 | Ingestion des indicateurs INSEE | Haute | 0 | Jamais | 0 | 0 | J7 | Non évalué |
 | Codes géographiques Corse/DOM | Haute | 0 | Jamais | 0 | 0 | J7 | Plusieurs implémentations incohérentes |

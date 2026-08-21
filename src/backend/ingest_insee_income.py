@@ -66,10 +66,10 @@ def main():
 
     logger.info("Écriture dans la base SQLite : %s", DB_PATH)
     conn = sqlite3.connect(DB_PATH)
-    df_dept.to_sql("income", conn, if_exists="replace", index=False)
+    df_dept.to_sql("revenus", conn, if_exists="replace", index=False)
     conn.close()
 
-    logger.info("✅ Table 'income' créée et remplie dans SQLite")
+    logger.info("✅ Table 'revenus' créée et remplie dans SQLite")
 
 
 if __name__ == "__main__":

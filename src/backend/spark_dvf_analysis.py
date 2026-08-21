@@ -9,6 +9,7 @@ from pyspark.sql.functions import (
     regexp_replace,
     substring,
     lpad,
+    when,
 )
 from pyspark.sql.types import DoubleType, StringType
 
@@ -18,11 +19,23 @@ logger = setup_logging()
 
 # 1. Session Spark
 logger.info("Initialisation de la session Spark pour 'DVF Spark Analysis'")
-spark = SparkSession.builder.appName("DVF Spark Analysis").getOrCreate()
+SPARK_MASTER_URL = os.getenv("SPARK_MASTER_URL", "local[*]")
+builder = (
+    SparkSession.builder.appName("DVF Spark Analysis")
+    .master(SPARK_MASTER_URL)
+    .config("spark.sql.shuffle.partitions", "8")
+    .config("spark.ui.enabled", "false")
+)
+if os.getenv("SPARK_DRIVER_HOST"):
+    builder = builder.config("spark.driver.host", os.environ["SPARK_DRIVER_HOST"])
+spark = builder.getOrCreate()
+logger.info("Spark master : %s", SPARK_MASTER_URL)
 
 # 2. Chemins
-CSV_PATH = os.path.join("data", "processed", "transactions_2024.csv")
-DB_PATH = os.path.join("data", "homepedia.db")
+CSV_PATH = os.getenv(
+    "DVF_PROCESSED_PATH", os.path.join("data", "processed", "transactions_2024.csv")
+)
+DB_PATH = os.getenv("DB_PATH", os.path.join("data", "homepedia.db"))
 logger.info("CSV : %s | SQLite : %s", CSV_PATH, DB_PATH)
 
 # 3. Lecture CSV
@@ -44,11 +57,13 @@ df = df.withColumn(
 )
 
 df = df.filter(col("surface_reelle_bati_num") > 0)
+df = df.filter(col("valeur_fonciere_num") >= 1000)
 
 df = df.withColumn(
     "prix_m2",
     col("valeur_fonciere_num") / col("surface_reelle_bati_num"),
 )
+df = df.filter((col("prix_m2") > 0) & (col("prix_m2") <= 20000))
 
 # 🔥 Correction critique : code postal propre
 df = df.withColumn(
@@ -60,12 +75,17 @@ df = df.withColumn(
     "code_postal_clean",
     lpad(col("code_postal_clean"), 5, "0"),
 )
+df = df.filter(col("code_postal_clean").rlike(r"^[0-9]{5}$"))
 
 # Département sur 2 chiffres
 df = df.withColumn(
     "dept",
-    substring(col("code_postal_clean"), 1, 2),
+    when(
+        substring(col("code_postal_clean"), 1, 2) == "20",
+        when(col("code_postal_clean").cast("int") < 20200, "2A").otherwise("2B"),
+    ).otherwise(substring(col("code_postal_clean"), 1, 2)),
 )
+df = df.filter(col("dept") != "00")
 
 # 5. Agrégations
 logger.info("Agrégation par département")
@@ -80,14 +100,14 @@ agg = (
 )
 
 # 6. Écriture SQLite
-logger.info("Écriture dans SQLite (spark_dept_analysis)")
+logger.info("Écriture dans SQLite (analyse_departementale)")
 pdf = agg.toPandas()
 
 conn = sqlite3.connect(DB_PATH)
-pdf.to_sql("spark_dept_analysis", conn, if_exists="replace", index=False)
+pdf.to_sql("analyse_departementale", conn, if_exists="replace", index=False)
 conn.close()
 
-logger.info("✅ spark_dept_analysis générée avec succès")
+logger.info("✅ analyse_departementale générée avec succès")
 
 spark.stop()
 logger.info("Session Spark arrêtée")

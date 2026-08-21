@@ -383,3 +383,20 @@ streaming, la double écriture non atomique et une dérive actuelle des noms de
 tables entre branches. En production, je versionnerais le schéma, rendrais les
 batchs idempotents, ajouterais orchestration et monitoring, et déplacerais les
 faits vers un stockage plus scalable. »
+# Mise à jour technique du 21 août 2026
+
+Le traitement DVF utilise désormais un cluster Spark standalone conteneurisé :
+
+```text
+spark-master:7077
+├── spark-worker-1 (1 cœur, 1 Gio)
+└── spark-worker-2 (1 cœur, 1 Gio)
+```
+
+Le service `spark-submit` exécute `src/backend/spark_dvf_analysis.py` et écrit
+la table canonique `analyse_departementale`. L'agrégation régionale consomme
+ensuite cette pré-agrégation au lieu de relire toutes les transactions.
+
+Le contrat physique partagé avec Metabase est décrit dans `docs/DATA_CONTRACT.md`.
+Les tables canoniques sont en français pour préserver les collections MongoDB
+et les analyses Metabase existantes.

@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import argparse
 from pymongo import MongoClient
 
 DB_PATH = os.getenv("DB_PATH", "data/homepedia.db")
@@ -38,6 +39,13 @@ def table_rows_generator(conn: sqlite3.Connection, table_name: str):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Miroir SQLite vers MongoDB")
+    parser.add_argument(
+        "--tables",
+        nargs="+",
+        help="Tables à synchroniser. Par défaut, toutes les tables sont synchronisées.",
+    )
+    args = parser.parse_args()
     print(f"[INFO] SQLite path : {DB_PATH}")
     print(f"[INFO] Mongo URI   : {MONGO_URI}")
     print(f"[INFO] Mongo DB    : {MONGO_DB}")
@@ -47,7 +55,11 @@ def main():
     client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
     db = client[MONGO_DB]
 
-    tables = fetch_table_names(conn)
+    available_tables = fetch_table_names(conn)
+    tables = args.tables or available_tables
+    unknown = sorted(set(tables) - set(available_tables))
+    if unknown:
+        raise ValueError(f"Tables SQLite inconnues : {unknown}")
     print(f"[INFO] Tables trouvées dans SQLite : {tables}")
 
     if not tables:
@@ -57,11 +69,15 @@ def main():
         return
 
     existing_collections = set(db.list_collection_names())
-    sqlite_tables = set(tables)
-    orphans = sorted(
-        c
-        for c in existing_collections
-        if c not in sqlite_tables and c not in PROTECTED_COLLECTIONS
+    sqlite_tables = set(available_tables)
+    orphans = (
+        sorted(
+            c
+            for c in existing_collections
+            if c not in sqlite_tables and c not in PROTECTED_COLLECTIONS
+        )
+        if args.tables is None
+        else []
     )
 
     if orphans:

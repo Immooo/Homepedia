@@ -32,7 +32,7 @@ UI_REFRESH_SECONDS = int(
 DEFAULT_HISTORY_LIMIT = int(os.getenv("REALTIME_UI_HISTORY_LIMIT", "300"))
 
 # Mock UI (démo): fait "bouger" la courbe sans modifier les données stockées
-DEFAULT_UI_MOCK = os.getenv("REALTIME_UI_MOCK", "1").strip().lower() not in (
+DEFAULT_UI_MOCK = os.getenv("REALTIME_UI_MOCK", "0").strip().lower() not in (
     "0",
     "false",
     "no",
@@ -203,8 +203,8 @@ def _load_latest() -> pd.DataFrame:
     if df.empty:
         return df
 
-    df["scraped_at_paris"] = pd.to_datetime(
-        df["scraped_at"].apply(lambda s: _parse_iso_to_paris_dt(s).isoformat())
+    df["scraped_at_paris"] = pd.to_datetime(df["scraped_at"], utc=True).dt.tz_convert(
+        PARIS_TZ
     )
 
     infos = df["metric_uid"].apply(_metric_info)
@@ -233,8 +233,8 @@ def _load_history_changes(metric_uid: str, limit: int) -> pd.DataFrame:
     if df.empty:
         return df
 
-    df["scraped_at_paris"] = pd.to_datetime(
-        df["scraped_at"].apply(lambda s: _parse_iso_to_paris_dt(s).isoformat())
+    df["scraped_at_paris"] = pd.to_datetime(df["scraped_at"], utc=True).dt.tz_convert(
+        PARIS_TZ
     )
     return df
 
@@ -255,8 +255,8 @@ def _load_runs_timeline(limit: int) -> pd.DataFrame:
 
     # On utilise finished_at comme timestamp "scrape terminé"
     df["scraped_at"] = df["finished_at"]
-    df["scraped_at_paris"] = pd.to_datetime(
-        df["scraped_at"].apply(lambda s: _parse_iso_to_paris_dt(str(s)).isoformat())
+    df["scraped_at_paris"] = pd.to_datetime(df["scraped_at"], utc=True).dt.tz_convert(
+        PARIS_TZ
     )
     return df
 

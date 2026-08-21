@@ -5,7 +5,7 @@ client = MongoClient("mongodb://homepedia-mongo:27017/")
 db = client["homepedia"]
 
 # Import Mongo unemployment
-df = pd.DataFrame(list(db.unemployment.find({}, {"_id": 0})))
+df = pd.DataFrame(list(db.chomage.find({}, {"_id": 0})))
 
 # Vérifie que les colonnes existent pour grouper
 print(df.head())

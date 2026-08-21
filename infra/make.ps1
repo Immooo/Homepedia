@@ -74,7 +74,10 @@ switch ($cmd) {
     Invoke-Compose exec app bash '-lc' 'set -e; PYTHONPATH=/app python -m src.backend.ingest_insee_population && PYTHONPATH=/app python -m src.backend.ingest_insee_income && PYTHONPATH=/app python -m src.backend.ingest_insee_unemployment && PYTHONPATH=/app python -m src.backend.ingest_insee_poverty && PYTHONPATH=/app python -m src.backend.ingest_insee_region'
   }
 
-  'etl-spark' { Invoke-Compose exec app bash '-lc' 'set -e; PYTHONPATH=/app python -m src.backend.spark_dvf_analysis' }
+  'etl-spark' {
+    & docker compose -f infra/docker-compose.yml --env-file .env --profile tools up --force-recreate --abort-on-container-exit --exit-code-from spark-submit spark-submit
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  }
   'etl-agg' { Invoke-Compose exec app bash '-lc' 'set -e; PYTHONPATH=/app python -m src.backend.aggregate_by_region' }
   'etl-export' { Invoke-Compose exec app bash '-lc' 'set -e; PYTHONPATH=/app python src/etl/sqlite_to_mongo_all_tables.py' }
 
@@ -96,7 +99,7 @@ def show_cols(tbl):
     except Exception as e:
         print("\n#", tbl, "(err)", e)
 
-for t in ("revenus","income","pauvrete","poverty","analyse_regionale","region_analysis"):
+for t in ("revenus","chomage","pauvrete","analyse_departementale","analyse_regionale"):
     show_cols(t)
 
 con.close()

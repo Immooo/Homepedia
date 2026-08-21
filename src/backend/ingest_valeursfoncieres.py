@@ -54,8 +54,22 @@ def main():
         df["date_mutation"], dayfirst=True, errors="coerce"
     )
 
+    df["valeur_fonciere"] = pd.to_numeric(
+        df["valeur_fonciere"]
+        .astype(str)
+        .str.replace(" ", "", regex=False)
+        .str.replace(",", ".", regex=False),
+        errors="coerce",
+    )
+    df["surface_reelle_bati"] = pd.to_numeric(
+        df["surface_reelle_bati"], errors="coerce"
+    )
+
     df = df.drop_duplicates()
     df = df.dropna(subset=["date_mutation", "valeur_fonciere", "code_postal"])
+    # Les mutations symboliques (1 €, quelques centaines d'euros) ne représentent
+    # pas un prix de marché exploitable pour les indicateurs immobiliers.
+    df = df[df["valeur_fonciere"] >= 1_000]
 
     logger.info("Écriture du CSV nettoyé : %s", OUTPUT_FILE)
 

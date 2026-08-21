@@ -55,10 +55,10 @@ def main():
     # 8. Insertion dans SQLite
     logger.info("Insertion dans la base SQLite : %s", DB_PATH)
     conn = sqlite3.connect(DB_PATH)
-    df_dept.to_sql("poverty", conn, if_exists="replace", index=False)
+    df_dept.to_sql("pauvrete", conn, if_exists="replace", index=False)
     conn.close()
 
-    logger.info("✅ Table 'poverty' créée avec %d lignes.", len(df_dept))
+    logger.info("✅ Table 'pauvrete' créée avec %d lignes.", len(df_dept))
 
 
 if __name__ == "__main__":

@@ -1,38 +1,38 @@
-import sys
-print(">>> PYTHONPATH:", sys.path)
+import math
+import os
 from pathlib import Path
-ROOT_DIR = Path(__file__).resolve().parents[2]  
+import random
+import sqlite3
+import sys
+from collections.abc import Sequence
+from typing import Any
+
+import folium
+import geopandas as gpd
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import streamlit as st
+from scipy.stats import linregress
+from streamlit_folium import st_folium
+from textblob import TextBlob
+from tinydb import TinyDB
+from wordcloud import WordCloud
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
 SRC_DIR = ROOT_DIR / "src"
 
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-import os
-import sqlite3
-import math
-import random
-from scipy.stats import linregress
-import streamlit as st
-import pandas as pd
-import geopandas as gpd
-import folium
-from streamlit_folium import st_folium
-import matplotlib.pyplot as plt
-from textblob import TextBlob
-from wordcloud import WordCloud
-from tinydb import TinyDB
-import numpy as np
-from typing import Any, List
-import matplotlib.ticker as mticker
-import seaborn as sns
-from app.db.mongo_client import get_mongo_collection
-from collections.abc import Sequence
+from app.db.mongo_client import get_mongo_collection  # noqa: E402
 
 COLS_NICE = {
     "code": "Département",
     "dept": "Département",
     "code_region": "Région",
-
     "id": "ID transaction",
     "date_mutation": "Date mutation",
     "nature_mutation": "Nature de la mutation",
@@ -42,31 +42,39 @@ COLS_NICE = {
     "type_local": "Type de bien",
     "surface_reelle_bati": "Surface bâtie m²",
     "nombre_pieces_principales": "Nb pièces principales",
-
     "nb_transactions": "Nombres de transactions",
     "prix_m2_moyen": "Prix moyen €/m²",
     "prix_m2": "Prix €/m²",
-
     "population": "Population",
     "income_median": "Revenu médian €",
     "taux_chomage": "Taux chômage %",
     "poverty_rate": "Taux pauvreté %",
-
     "income": "Revenu médian € ",
     "unemployment": "Taux chômage % ",
     "poverty": "Taux pauvreté % ",
 }
 
+
 def compute_polarity(text: str) -> float:
     blob = TextBlob(str(text))
-    sent: Any = blob.sentiment 
+    sent: Any = blob.sentiment
     return float(sent.polarity)
+
 
 def pretty(df: pd.DataFrame) -> pd.DataFrame:
     return df.rename(columns={k: v for k, v in COLS_NICE.items() if k in df.columns})
 
+
 def show(df: pd.DataFrame, n: int | None = None):
-    st.dataframe(pretty(df if n is None else df.head(n)))
+    displayed = pretty(df if n is None else df.head(n))
+    config = {}
+    for column in displayed.columns:
+        if "Prix" in column or "Valeur foncière" in column or "Revenu" in column:
+            config[column] = st.column_config.NumberColumn(format="%.0f €")
+        elif "Taux" in column:
+            config[column] = st.column_config.NumberColumn(format="%.1f %%")
+    st.dataframe(displayed, column_config=config, use_container_width=True)
+
 
 # 1. Configuration de la page
 st.set_page_config(page_title="Homepedia – Analyses Immobilier France", layout="wide")
@@ -81,8 +89,8 @@ view = st.sidebar.radio(
         "Text Analysis",
         "Indicateurs Socio-éco",
         "Région",
-        "Méthodologie"
-    ]
+        "Méthodologie",
+    ],
 )
 
 # 3. Connexion à la base SQLite
@@ -100,7 +108,7 @@ if view == "Standard":
     # --- Mode d'analyse ---
     mode = st.sidebar.radio(
         "Mode d'analyse",
-        ["Rapide (échantillon léger)", "Détaillé (toutes les visualisations)"]
+        ["Rapide (échantillon léger)", "Détaillé (toutes les visualisations)"],
     )
     fast_mode = mode.startswith("Rapide")
 
@@ -114,7 +122,7 @@ if view == "Standard":
             max_value=80_000,
             value=40_000,
             step=10_000,
-            help="Mode rapide : petit échantillon pour garder l'interface très fluide."
+            help="Mode rapide : petit échantillon pour garder l'interface très fluide.",
         )
     else:
         max_rows = st.sidebar.slider(
@@ -123,7 +131,7 @@ if view == "Standard":
             max_value=200_000,
             value=120_000,
             step=10_000,
-            help="Mode détaillé : plus de données, calculs et graphiques plus lourds."
+            help="Mode détaillé : plus de données, calculs et graphiques plus lourds.",
         )
 
     min_date = pd.to_datetime("2024-01-01")
@@ -144,32 +152,21 @@ if view == "Standard":
             start_date = end_date = pd.to_datetime(dates_list[0])
         else:
             start_date = pd.to_datetime(dates_list[0])
-            end_date   = pd.to_datetime(dates_list[1])
+            end_date = pd.to_datetime(dates_list[1])
     else:
         start_date = end_date = pd.to_datetime(raw_dates)
 
     # --- Type de bien ---
     type_list = ["Tous"] + [
-        r[0] for r in conn.execute(
+        r[0]
+        for r in conn.execute(
             "SELECT DISTINCT type_local FROM transactions WHERE type_local IS NOT NULL ORDER BY 1"
         ).fetchall()
     ]
     choix_type = st.sidebar.selectbox("Type de logement", type_list)
 
-    pmin_glob, pmax_glob = conn.execute("""
-        SELECT
-            MIN(valeur_fonciere / surface_reelle_bati),
-            MAX(valeur_fonciere / surface_reelle_bati)
-        FROM transactions
-        WHERE surface_reelle_bati > 0
-        AND valeur_fonciere IS NOT NULL
-    """).fetchone()
-
-    if pmin_glob is None or pmax_glob is None:
-        pmin_glob, pmax_glob = 0, 20_000
-    else:
-        pmin_glob = max(0, int(pmin_glob))
-        pmax_glob = min(int(pmax_glob), 20_000)
+    # Bornes métier fixes : évite un scan intégral de 5,8 M de lignes à chaque session.
+    pmin_glob, pmax_glob = 0, 20_000
 
     price_range = st.sidebar.slider(
         "Prix au m²",
@@ -182,14 +179,14 @@ if view == "Standard":
     @st.cache_data(show_spinner=False)
     def load_transactions(start, end, type_sel, pmin, pmax, max_rows: int):
         start_iso = start.strftime("%Y-%m-%d")
-        end_iso   = end.strftime("%Y-%m-%d")
+        end_iso = end.strftime("%Y-%m-%d")
 
         query = """
             SELECT * ,
                 valeur_fonciere / surface_reelle_bati AS prix_m2,
                 substr(code_postal,1,2) AS dept
             FROM   transactions
-            WHERE  date(date_mutation) BETWEEN ? AND ?
+            WHERE  date_mutation BETWEEN ? AND ?
             AND  surface_reelle_bati > 0
             AND  valeur_fonciere IS NOT NULL
             AND  (valeur_fonciere / surface_reelle_bati) BETWEEN ? AND ?
@@ -213,9 +210,7 @@ if view == "Standard":
 
         if "code_postal" in df.columns:
             df["code_postal"] = (
-                df["code_postal"]
-                .astype(str)
-                .str.replace(r"\.0$", "", regex=True)
+                df["code_postal"].astype(str).str.replace(r"\.0$", "", regex=True)
             )
 
         if "dept" not in df.columns and "code_postal" in df.columns:
@@ -224,13 +219,9 @@ if view == "Standard":
         return df
 
     tx = load_transactions(
-        start_date,
-        end_date,
-        choix_type,
-        price_range[0],
-        price_range[1],
-        max_rows  
+        start_date, end_date, choix_type, price_range[0], price_range[1], max_rows
     )
+    total_transactions = sql_scalar("SELECT COUNT(*) FROM transactions")
 
     # --- KPIs & export ---
     col1, col2, col3 = st.columns(3)
@@ -240,21 +231,20 @@ if view == "Standard":
 
     if fast_mode:
         st.caption(
-            f"Mode rapide – échantillon de {len(tx):,} transactions sur ~200 000 au total "
+            f"Mode rapide – échantillon de {len(tx):,} transactions sur {total_transactions:,} au total "
             "pour garder l'interface très fluide."
         )
     else:
         st.caption(
-            f"Mode détaillé – échantillon de {len(tx):,} transactions sur ~5,8 M au total "
+            f"Mode détaillé – échantillon de {len(tx):,} transactions sur {total_transactions:,} au total "
             "avec toutes les visualisations activées."
         )
-
 
     st.download_button(
         "📥 Exporter ces transactions (CSV)",
         tx.to_csv(index=False).encode("utf-8"),
         file_name="transactions_filtrees.csv",
-        mime="text/csv"
+        mime="text/csv",
     )
 
     st.subheader("Aperçu des transactions filtrées")
@@ -263,11 +253,13 @@ if view == "Standard":
     # --- Carte choroplèthe ---
     prix_dept = (
         tx.groupby("dept")["prix_m2"]
-          .mean()
-          .reset_index()
-          .rename(columns={"dept": "code", "prix_m2": "prix_m2_moyen"})
+        .mean()
+        .reset_index()
+        .rename(columns={"dept": "code", "prix_m2": "prix_m2_moyen"})
     )
-    geo = gpd.read_file("data/raw/geo/departements_simplifie.geojson")[["code", "geometry"]]
+    geo = gpd.read_file("data/raw/geo/departements_simplifie.geojson")[
+        ["code", "geometry"]
+    ]
     geo = geo.merge(prix_dept, on="code", how="left")
 
     if (not fast_mode) and st.checkbox("Afficher la carte", value=True):
@@ -281,7 +273,7 @@ if view == "Standard":
                 legend_name="Prix moyen (€ / m²)",
                 fill_opacity=0.7,
                 line_opacity=0.2,
-                nan_fill_color="white"
+                nan_fill_color="white",
             ).add_to(m)
             st.subheader("Carte du prix moyen au m²")
             st_folium(m, width=800, height=600)
@@ -355,8 +347,8 @@ if view == "Standard":
 elif view == "Spark Analysis":
     st.header("Vue Spark Analysis (pré-agrégation)")
     df_spark = pd.read_sql_query(
-        "SELECT dept AS code, nb_transactions, prix_m2_moyen FROM spark_dept_analysis",
-        conn
+        "SELECT dept AS code, nb_transactions, prix_m2_moyen FROM analyse_departementale",
+        conn,
     )
     df_spark["prix_m2_moyen"] = df_spark["prix_m2_moyen"].round(0).astype(int)
     st.subheader("Résultats Spark par département")
@@ -364,20 +356,24 @@ elif view == "Spark Analysis":
     per_page = st.sidebar.slider("Dépts par page", 5, 50, 10, 5)
     n_pages = math.ceil(len(df_spark) / per_page)
     page = st.sidebar.number_input("Page", 1, n_pages, 1)
-    start = (page-1)*per_page
-    df_page = df_spark.iloc[start:start+per_page]
+    start = (page - 1) * per_page
+    df_page = df_spark.iloc[start : start + per_page]
     st.subheader(f"Page {page}/{n_pages}")
     show(df_page)
     fig3, ax3 = plt.subplots()
     df_page.set_index("code")["prix_m2_moyen"].plot.bar(ax=ax3)
     ax3.set_xlabel("Département")
     ax3.set_ylabel("Prix moyen (€ / m²)")
-    ax3.tick_params(axis='x', rotation=45)
+    ax3.tick_params(axis="x", rotation=45)
     st.pyplot(fig3)
 
 # === VUE TEXT ANALYSIS ===
 elif view == "Text Analysis":
-    st.header("Vue Text Analysis (Sentiment & Word Cloud)")
+    st.header("Analyse textuelle annexe (sentiment & nuage de mots)")
+    st.warning(
+        "Cette démonstration NLP utilise le jeu public Hotel Reviews. "
+        "Elle illustre le traitement de texte mais n'entre pas dans les indicateurs DVF/INSEE."
+    )
     tdb_path = os.path.join("data", "processed", "comments.json")
     if not os.path.exists(tdb_path):
         st.error(f"Base NoSQL manque : {tdb_path}")
@@ -386,21 +382,21 @@ elif view == "Text Analysis":
     docs = db.all()
     st.sidebar.markdown(f"**Total commentaires :** {len(docs):,}")
     per_page = st.sidebar.slider("Avis par page", 10, 200, 50, 10)
-    page = st.sidebar.number_input("Page", 1, math.ceil(len(docs)/per_page), 1)
-    subset = docs[(page-1)*per_page : page*per_page]
+    page = st.sidebar.number_input("Page", 1, math.ceil(len(docs) / per_page), 1)
+    subset = docs[(page - 1) * per_page : page * per_page]
     df_page = pd.DataFrame(subset)
-    st.subheader(f"Commentaires (page {page})")
+    st.subheader(f"Avis hôteliers — jeu annexe (page {page})")
     show(df_page)
     df_page["sentiment"] = df_page["commentaire"].map(compute_polarity)
     st.subheader("Sentiment des avis")
-    st.bar_chart(df_page['sentiment'])
+    st.bar_chart(df_page["sentiment"])
     sample_n = st.sidebar.slider("Échantillon Word Cloud", 100, 5000, 1000, 100)
     sampled = random.sample(docs, sample_n)
-    text = " ".join(d['commentaire'] for d in sampled)
-    wc = WordCloud(width=800, height=400, background_color='white').generate(text)
-    fig_wc, ax_wc = plt.subplots(figsize=(10,5))
-    ax_wc.imshow(wc, interpolation='bilinear')
-    ax_wc.axis('off')
+    text = " ".join(d["commentaire"] for d in sampled)
+    wc = WordCloud(width=800, height=400, background_color="white").generate(text)
+    fig_wc, ax_wc = plt.subplots(figsize=(10, 5))
+    ax_wc.imshow(wc, interpolation="bilinear")
+    ax_wc.axis("off")
     st.subheader(f"Word Cloud (n={sample_n})")
     st.pyplot(fig_wc)
 
@@ -410,7 +406,7 @@ elif view == "Indicateurs Socio-éco":
 
     # Filtres Socio-éco
     df_chom_tmp = pd.read_parquet("data/processed/unemployment_dept.parquet")
-                                  
+
     df_chom_tmp["taux_chomage"] = pd.to_numeric(
         df_chom_tmp["taux_chomage"].str.replace(",", "."), errors="coerce"
     )
@@ -418,22 +414,25 @@ elif view == "Indicateurs Socio-éco":
         "Taux de chômage (%)",
         float(df_chom_tmp["taux_chomage"].min()),
         float(df_chom_tmp["taux_chomage"].max()),
-        (float(df_chom_tmp["taux_chomage"].min()), float(df_chom_tmp["taux_chomage"].max()))
+        (
+            float(df_chom_tmp["taux_chomage"].min()),
+            float(df_chom_tmp["taux_chomage"].max()),
+        ),
     )
 
     # Chemins
     unemployment_path = "data/processed/unemployment_dept.parquet"
-    income_path       = "data/processed/income_dept.parquet"
-    population_path   = "data/processed/population_dept.parquet"
-    poverty_path      = "data/processed/poverty_dept.parquet"
-    geojson_path      = "data/raw/geo/departements_simplifie.geojson"
+    income_path = "data/processed/income_dept.parquet"
+    population_path = "data/processed/population_dept.parquet"
+    poverty_path = "data/processed/poverty_dept.parquet"
+    geojson_path = "data/raw/geo/departements_simplifie.geojson"
 
     # Vérifications
     for path, name in [
         (unemployment_path, "chômage"),
-        (income_path,       "revenu médian"),
-        (population_path,   "population"),
-        (poverty_path,      "pauvreté")
+        (income_path, "revenu médian"),
+        (population_path, "population"),
+        (poverty_path, "pauvreté"),
     ]:
         if not os.path.exists(path):
             st.error(f"Données {name} manquantes ({path}).")
@@ -442,49 +441,61 @@ elif view == "Indicateurs Socio-éco":
     # Chargement
     @st.cache_data(show_spinner=False)
     def load_df(path: str) -> pd.DataFrame:
-        return pd.read_parquet(path)   
+        return pd.read_parquet(path)
 
     @st.cache_data
     def load_geo(path):
-        return gpd.read_file(path)[["code","geometry"]]
+        return gpd.read_file(path)[["code", "geometry"]]
 
     df_chom = load_df(unemployment_path)
-    df_inc  = load_df(income_path)
-    df_pop  = load_df(population_path)
-    df_pov  = load_df(poverty_path)
-    geo     = load_geo(geojson_path)
+    df_inc = load_df(income_path)
+    df_pop = load_df(population_path)
+    df_pov = load_df(poverty_path)
+    geo = load_geo(geojson_path)
 
     # Conversion numérique
-    df_chom["taux_chomage"] = pd.to_numeric(df_chom["taux_chomage"].str.replace(",","."), errors="coerce")
-    df_inc["income_median"]   = pd.to_numeric(df_inc["income_median"].str.replace(",","."), errors="coerce")
-    df_pop["population"]      = pd.to_numeric(df_pop["population"].str.replace(" ",""), errors="coerce")
-    df_pov["poverty_rate"]    = pd.to_numeric(df_pov["poverty_rate"].str.replace(",","."), errors="coerce")
+    df_chom["taux_chomage"] = pd.to_numeric(
+        df_chom["taux_chomage"].str.replace(",", "."), errors="coerce"
+    )
+    df_inc["income_median"] = pd.to_numeric(
+        df_inc["income_median"].str.replace(",", "."), errors="coerce"
+    )
+    df_pop["population"] = pd.to_numeric(
+        df_pop["population"].str.replace(" ", ""), errors="coerce"
+    )
+    df_pov["poverty_rate"] = pd.to_numeric(
+        df_pov["poverty_rate"].str.replace(",", "."), errors="coerce"
+    )
 
     # Filtre chômage
     df_chom = df_chom.query("@min_c <= taux_chomage <= @max_c")
 
     # Onglets
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "Chômage",
-        "Revenu médian",
-        "Population",
-        "Pauvreté",
-        "Corrélation",
-        "Matrice corrélations"
-    ])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
+        [
+            "Chômage",
+            "Revenu médian",
+            "Population",
+            "Pauvreté",
+            "Corrélation",
+            "Matrice corrélations",
+        ]
+    )
 
     # --- Chômage ---
     with tab1:
         st.subheader("Taux de chômage (T1 2025)")
         show(df_chom)
-        geo1 = geo.merge(df_chom.rename(columns={"code":"code"}), on="code", how="left")
-        m1 = folium.Map(location=[46.6,2.4], zoom_start=5)
+        geo1 = geo.merge(
+            df_chom.rename(columns={"code": "code"}), on="code", how="left"
+        )
+        m1 = folium.Map(location=[46.6, 2.4], zoom_start=5)
         folium.Choropleth(
             geo_data=geo1,
             data=geo1,
-            columns=["code","taux_chomage"],
+            columns=["code", "taux_chomage"],
             key_on="feature.properties.code",
-            legend_name="Taux de chômage (%)"
+            legend_name="Taux de chômage (%)",
         ).add_to(m1)
         st_folium(m1, width=800, height=600)
 
@@ -493,13 +504,13 @@ elif view == "Indicateurs Socio-éco":
         st.subheader("Revenu médian (2021)")
         show(df_inc)
         geo2 = geo.merge(df_inc, on="code", how="left")
-        m2 = folium.Map(location=[46.6,2.4], zoom_start=5)
+        m2 = folium.Map(location=[46.6, 2.4], zoom_start=5)
         folium.Choropleth(
             geo_data=geo2,
             data=geo2,
-            columns=["code","income_median"],
+            columns=["code", "income_median"],
             key_on="feature.properties.code",
-            legend_name="Revenu médian (€ / an)"
+            legend_name="Revenu médian (€ / an)",
         ).add_to(m2)
         st_folium(m2, width=800, height=600)
 
@@ -508,17 +519,17 @@ elif view == "Indicateurs Socio-éco":
         st.subheader("Population")
         show(df_pop)
         geo3 = geo.merge(df_pop, on="code", how="left")
-        m3 = folium.Map(location=[46.6,2.4], zoom_start=5)
+        m3 = folium.Map(location=[46.6, 2.4], zoom_start=5)
         folium.Choropleth(
             geo_data=geo3,
             data=geo3,
-            columns=["code","population"],
+            columns=["code", "population"],
             key_on="feature.properties.code",
-            legend_name="Population" 
+            legend_name="Population",
         ).add_to(m3)
         st_folium(m3, width=800, height=600)
         fig3, ax3 = plt.subplots()
-        ax3.hist(df_pop["population"].dropna(), bins=30, edgecolor='black')
+        ax3.hist(df_pop["population"].dropna(), bins=30, edgecolor="black")
         ax3.set_xlabel("Population")
         ax3.set_ylabel("Nombre de départements")
         ax3.xaxis.set_major_formatter(
@@ -532,17 +543,17 @@ elif view == "Indicateurs Socio-éco":
         st.subheader("Taux de pauvreté")
         show(df_pov)
         geo4 = geo.merge(df_pov, on="code", how="left")
-        m4 = folium.Map(location=[46.6,2.4], zoom_start=5)
+        m4 = folium.Map(location=[46.6, 2.4], zoom_start=5)
         folium.Choropleth(
             geo_data=geo4,
             data=geo4,
-            columns=["code","poverty_rate"],
+            columns=["code", "poverty_rate"],
             key_on="feature.properties.code",
-            legend_name="Taux de pauvrété (%)"
+            legend_name="Taux de pauvrété (%)",
         ).add_to(m4)
         st_folium(m4, width=800, height=600)
         fig4, ax4 = plt.subplots()
-        ax4.hist(df_pov["poverty_rate"].dropna(), bins=30, edgecolor='black')
+        ax4.hist(df_pov["poverty_rate"].dropna(), bins=30, edgecolor="black")
         ax4.set_xlabel("Taux de pauvreté (%)")
         ax4.set_ylabel("Nombre de départements")
         st.pyplot(fig4)
@@ -553,11 +564,15 @@ elif view == "Indicateurs Socio-éco":
         df_corr = df_chom.merge(df_inc, on="code")
         fig5, ax5 = plt.subplots()
         ax5.scatter(df_corr["income_median"], df_corr["taux_chomage"], alpha=0.7)
-        slope, intercept, r, p, se = linregress(df_corr["income_median"], df_corr["taux_chomage"])
-        xx = np.linspace(df_corr["income_median"].min(), df_corr["income_median"].max(), 100)
+        slope, intercept, r, p, se = linregress(
+            df_corr["income_median"], df_corr["taux_chomage"]
+        )
+        xx = np.linspace(
+            df_corr["income_median"].min(), df_corr["income_median"].max(), 100
+        )
         r_arr = np.asarray(r, dtype="float64")
-        r2 = r_arr ** 2
-        ax5.plot(xx, intercept + slope * xx, linestyle='--', label=f"R²={r2:.2f}")
+        r2 = r_arr**2
+        ax5.plot(xx, intercept + slope * xx, linestyle="--", label=f"R²={r2:.2f}")
         ax5.set_xlabel("Revenu médian (€ / an)")
         ax5.set_ylabel("Taux de chômage (%)")
         ax5.legend()
@@ -566,8 +581,14 @@ elif view == "Indicateurs Socio-éco":
     # --- Matrice corrélation ---
     with tab6:
         st.subheader("Matrice de corrélations multiples")
-        df_all = df_chom.merge(df_inc, on="code").merge(df_pop, on="code").merge(df_pov, on="code")
-        corr = df_all[["taux_chomage","income_median","population","poverty_rate"]].corr()
+        df_all = (
+            df_chom.merge(df_inc, on="code")
+            .merge(df_pop, on="code")
+            .merge(df_pov, on="code")
+        )
+        corr = df_all[
+            ["taux_chomage", "income_median", "population", "poverty_rate"]
+        ].corr()
         fig6, ax6 = plt.subplots()
         cax = ax6.imshow(corr, vmin=-1, vmax=1)
         ax6.set_xticks(range(len(corr)))
@@ -577,7 +598,7 @@ elif view == "Indicateurs Socio-éco":
         ax6.set_yticklabels(labels)
         for i in range(len(corr)):
             for j in range(len(corr)):
-                val = corr.iat[i,j]
+                val = corr.iat[i, j]
                 val_f = np.asarray(val, dtype="float64")
                 color = "white" if abs(val_f) > 0.5 else "black"
                 color = "white" if abs(val_f) > 0.5 else "black"
@@ -592,7 +613,7 @@ elif view == "Région":
     # 1) Chargement en cache des données régionales
     @st.cache_data
     def load_region_df():
-        df = pd.read_sql_query("SELECT * FROM region_analysis", conn)
+        df = pd.read_sql_query("SELECT * FROM analyse_regionale", conn)
         # zfill sur code_region si nécessaire
         df["code_region"] = df["code_region"].astype(str).str.zfill(2)
         return df
@@ -600,13 +621,15 @@ elif view == "Région":
     # 2) Lecture + simplification du GeoJSON en cache
     @st.cache_data
     def load_region_geo(path):
-        geo = gpd.read_file(path)[["code","geometry"]]
+        geo = gpd.read_file(path)[["code", "geometry"]]
         # simplification : tolérance ajustable (en degrés décimaux)
-        geo["geometry"] = geo["geometry"].simplify(tolerance=0.02, preserve_topology=True)
+        geo["geometry"] = geo["geometry"].simplify(
+            tolerance=0.02, preserve_topology=True
+        )
         return geo
 
     df_region = load_region_df()
-    geo_reg   = load_region_geo(os.path.join("data","raw","geo","regions.geojson"))
+    geo_reg = load_region_geo(os.path.join("data", "raw", "geo", "regions.geojson"))
 
     st.subheader("Aperçu des données régionales")
     show(df_region)
@@ -618,28 +641,28 @@ elif view == "Région":
     borne_max = ((pop_max // 2_000_000) + 1) * 2_000_000
     st.sidebar.subheader("Plage de population (pas 2 M)")
     x_range = st.sidebar.slider(
-        "Population", 
+        "Population",
         min_value=borne_min,
         max_value=borne_max,
         value=(borne_min, borne_max),
         step=2_000_000,
-        format="%d"
+        format="%d",
     )
 
     # 4) Merge + carte Folium
     geo_plot = geo_reg.merge(
-        df_region.rename(columns={"code_region":"code"}), on="code", how="left"
+        df_region.rename(columns={"code_region": "code"}), on="code", how="left"
     )
-    m_reg = folium.Map(location=[46.6,2.4], zoom_start=5)
+    m_reg = folium.Map(location=[46.6, 2.4], zoom_start=5)
     folium.Choropleth(
         geo_data=geo_plot,
         data=geo_plot,
-        columns=["code","prix_m2_moyen"],
+        columns=["code", "prix_m2_moyen"],
         key_on="feature.properties.code",
         legend_name="Prix moyen (€ / m²)",
         fill_opacity=0.7,
         line_opacity=0.2,
-        nan_fill_color="white"
+        nan_fill_color="white",
     ).add_to(m_reg)
     st.subheader("Carte du prix moyen au m² par région")
     st_folium(m_reg, width=800, height=600)
@@ -673,7 +696,13 @@ elif view == "Région":
 
     @st.cache_data
     def compute_region_corr(df: pd.DataFrame) -> pd.DataFrame:
-        features = ["prix_m2_moyen", "population", "income_median", "taux_chomage", "poverty_rate"]
+        features = [
+            "prix_m2_moyen",
+            "population",
+            "income_median",
+            "taux_chomage",
+            "poverty_rate",
+        ]
         cols = [c for c in features if c in df.columns]
         return df[cols].corr() if len(cols) > 1 else pd.DataFrame()
 
@@ -688,15 +717,16 @@ elif view == "Région":
             annot=True,
             fmt=".2f",
             cmap="coolwarm",
-            vmin=-1, vmax=1,
+            vmin=-1,
+            vmax=1,
             square=True,
             cbar_kws={"shrink": 0.75},
-            ax=ax
+            ax=ax,
         )
         # Ajustement dynamique de la couleur des annotations
-        for text in ax.texts:
-            val = float(text.get_text())
-            text.set_color("white" if abs(val) > 0.5 else "black")
+        for annotation in ax.texts:
+            val = float(annotation.get_text())
+            annotation.set_color("white" if abs(val) > 0.5 else "black")
         labels_reg = [COLS_NICE.get(c, c) for c in corr_reg.columns]
         ax.set_xticklabels(labels_reg, rotation=45, ha="right")
         ax.set_yticklabels(labels_reg)
@@ -706,17 +736,29 @@ elif view == "Région":
 elif view == "Méthodologie":
     st.header("📚 Méthodologie & Choix techniques")
 
+    total_transactions = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
+    nb_departements = conn.execute(
+        "SELECT COUNT(*) FROM analyse_departementale"
+    ).fetchone()[0]
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Transactions DVF nettoyées", f"{total_transactions:,}")
+    c2.metric("Départements agrégés", nb_departements)
+    c3.metric("Workers Spark", 2)
+
     if st.button("🔍 Tester la connexion Mongo"):
         from app.db.mongo_client import get_mongo_collection
+
         col = get_mongo_collection("transactions")
         doc = col.find_one()
         st.write("Exemple document Mongo :", doc)
 
-    st.markdown("""
-    ### Pré-processing des données
-    - **Transactions DVF 2024** : nettoyage des valeurs foncières / surfaces, suppression des valeurs aberrantes, extraction du code département.
+    st.markdown(
+        """
+    ### Prétraitement et qualité des données
+    - **Transactions DVF 2024** : normalisation des dates et codes postaux, conversion numérique, suppression des doublons exacts et exclusion des mutations symboliques inférieures à 1 000 €.
+    - Pour les indicateurs de prix, seules les surfaces strictement positives et les valeurs comprises entre 0 et 20 000 €/m² sont conservées.
     - **Indicateurs INSEE (revenu, chômage, pauvreté, population)** : filtrage des mesures fiables, conversion numérique, agrégation au niveau départemental.
-    - Tous les scripts sont disponibles dans `src/backend/ingest_*.py`.
+    - Le contrat partagé par SQLite, MongoDB, Streamlit et Metabase est documenté dans `docs/DATA_CONTRACT.md`.
 
     ### Choix des métriques
     | Métrique | Rôle dans l’analyse |
@@ -728,28 +770,42 @@ elif view == "Méthodologie":
     | Population | Taille du marché |
 
     ### Librairies data science mises en œuvre
-    - **pandas**, **geopandas** : manipulation tabulaire & géospatiale  
-    - **matplotlib / seaborn** : visualisation statistique  
-    - **PySpark** : agrégations rapides sur ~2 M de lignes DVF  
+    - **pandas**, **geopandas** : manipulation tabulaire & géospatiale
+    - **matplotlib / seaborn** : visualisation statistique
+    - **PySpark** : pré-agrégations DVF distribuées sur deux workers
     - **folium** : cartes choroplèthes interactives
 
     ### Architecture
     ```text
-    CSV / Scraping  →  Scripts ETL  →  SQLite (homepedia.db)
-                          │
-                          └─► Streamlit 5 vues  →  Docker
+    DVF / INSEE → ETL + contrôles qualité → SQLite (référence)
+                         │                  │
+                         │                  ├─► MongoDB homepedia_buffer → Metabase
+                         │                  └─► Streamlit (tableaux, cartes, graphiques)
+                         └─► Spark master → worker 1 + worker 2
+                                      └─► analyse_departementale
+
+    INSEE web → polling 300 s → validation → latest / history / runs
     ```
 
-    ### Limites & pistes
-    - Ajouter indicateurs démographie/âge  
-    - Tests unitaires sur chaque ingestion  
-    - Déploiement cloud (railway.app, Render, etc.)
-    """)
+    ### Stockage et reproductibilité
+    - **SQLite** : référentiel relationnel local, adapté à la démonstration analytique.
+    - **MongoDB** : miroir non relationnel consommé par Metabase et stockage du flux périodique.
+    - **Docker Compose** : application, worker temps réel, MongoDB, Metabase et cluster Spark reproductibles.
+    - **Tests automatisés** : contrat des tables, présence, volumes minimaux et absence de valeurs numériques nulles.
+
+    ### Limites assumées
+    - Le cluster possède plusieurs nœuds conteneurisés mais fonctionne sur une seule machine physique.
+    - Le temps réel est un polling micro-batch, pas un streaming événementiel natif.
+    - SQLite convient au projet local, pas à de nombreuses écritures concurrentes en production.
+    """
+    )
+
 
 def show_mongo_debug():
-    col = get_mongo_collection("properties")  
+    col = get_mongo_collection("properties")
     doc = col.find_one()
     st.write("Exemple document Mongo :", doc)
+
 
 # Clôture
 conn.close()

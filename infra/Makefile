@@ -50,7 +50,7 @@ etl-valeurs:
 	$(COMPOSE) exec app python src/backend/ingest_valeursfoncieres.py
 
 etl-spark:
-	$(COMPOSE) exec app python src/backend/spark_dvf_analysis.py
+	$(COMPOSE) --profile tools up --force-recreate --abort-on-container-exit --exit-code-from spark-submit spark-submit
 
 etl-agg:
 	$(COMPOSE) exec app python src/backend/aggregate_by_region.py
