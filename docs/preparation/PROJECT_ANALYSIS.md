@@ -1,9 +1,10 @@
 # Homepedia — Analyse fiable du projet
 
-> État de l'analyse : inspection statique du dépôt et inspection en lecture seule de
-> `data/homepedia.db`, le 30 juillet 2026. Aucun pipeline, conteneur, scraper ou test
-> n'a été lancé. Les éléments marqués **Constaté** sont démontrés par le dépôt ou la
-> base locale ; les éléments marqués **Hypothèse** restent à confirmer.
+> État de l'analyse : inspection statique du dépôt et des bases locales, actualisée
+> le 22 août 2026 après consolidation de la qualité DVF, du cluster Spark, de
+> l'interface et de la séparation du stockage temps réel. Les éléments marqués
+> **Constaté** sont démontrés par le dépôt ou les bases locales ; les éléments
+> marqués **Hypothèse** restent à confirmer.
 
 > Précisions données par le porteur du projet le 12 août 2026 : le dépôt et la
 > base ont été copiés depuis son ancien PC portable ; certains environnements ou
@@ -26,24 +27,22 @@ changements et un journal d'exécution dans SQLite et MongoDB
 `src/realtime_price/worker.py`).
 
 Ce n'est pas une architecture Hadoop/Kafka de production. Spark est utilisé dans
-un job local de pré-agrégation, et le « temps réel » est du **polling micro-batch**
+un cluster standalone Docker mono-machine (un master et deux workers) pour la
+pré-agrégation, et le « temps réel » est du **polling micro-batch**
 toutes les 300 secondes par défaut, pas un flux événementiel continu
 (`src/backend/spark_dvf_analysis.py`, `src/realtime_price/config.py`,
 `src/realtime_price/worker.py`).
 
-La base locale constitue une preuve d'exécution significative : elle contient
-5 814 960 transactions, 89 lignes d'analyse départementale, 12 lignes d'analyse
-régionale, 7 métriques temps réel, 16 765 changements historisés et 5 113 runs
-du worker (`data/homepedia.db`, inspection SQLite en lecture seule du 30/07/2026).
+La base analytique constitue une preuve d'exécution significative : après retrait
+de plus de 3,9 millions de lignes dupliquées ou aberrantes, elle contient
+1 884 593 transactions DVF uniques, 94 agrégats départementaux et 13 agrégats
+régionaux, Corse incluse. Le flux périodique est isolé dans
+`data/realtime_price.db`, avec son état courant, son historique et ses runs.
 
-Le principal risque actuel est la dérive entre les branches et les contrats de
-données : le code courant attend surtout des tables anglaises
-(`spark_dept_analysis`, `region_analysis`, `income`, `unemployment`, `poverty`),
-alors que la base locale expose principalement des tables françaises
-(`analyse_departementale`, `analyse_regionale`, `revenus`, `chomage`,
-`pauvrete`). Le schéma ERD et les tests reflètent encore une troisième photographie
-partielle (`src/app/streamlit_app.py`, `src/backend/aggregate_by_region.py`,
-`tests/test_ingestion.py`, `docs/homepedia_erd.dot`, `data/homepedia.db`).
+Le contrat canonique documenté dans `docs/DATA_CONTRACT.md` aligne désormais les
+noms français utilisés par SQLite, MongoDB, Streamlit, Metabase et les tests. Le
+risque résiduel porte sur la discipline de migration et les anciens scripts ou
+artefacts qui pourraient encore suivre un schéma historique.
 
 ## 2. Problème résolu
 
@@ -174,8 +173,8 @@ Preuves : `src/realtime_price/insee_scraper.py`,
 |---|---|---|
 | Ingestions DVF/INSEE | nettoyage et production CSV/SQLite | plusieurs scripts autonomes, conventions hétérogènes |
 | Chargeurs SQL | SQLite principal ; ancien chemin PostgreSQL | le chemin PostgreSQL n'est pas intégré au Compose |
-| Spark DVF | pré-agrégation départementale | session Spark locale, sortie rapatriée avec `toPandas()` |
-| Agrégation régionale | jointure DVF + indicateurs + référentiel géographique | contrat de tables incohérent avec les producteurs courants |
+| Spark DVF | pré-agrégation départementale | cluster Docker 1 master + 2 workers ; petite sortie rapatriée avec `toPandas()` |
+| Agrégation régionale | jointure DVF + indicateurs + référentiel géographique | contrat canonique ; 13 régions, Corse incluse |
 | Export SQLite→Mongo | miroir par collection | destructif pour les collections cibles : `drop()` puis réinsertion |
 | Worker temps réel | scraping périodique, DQ, persistance double | le sous-système le plus structuré et instrumenté |
 | Dashboard principal | six vues analytiques | mélange SQLite, Parquet, GeoJSON et TinyDB |
@@ -194,8 +193,8 @@ Preuves : `src/`, `infra/docker-compose.yml`, `tests/test_ingestion.py`,
   (`src/backend/ingest_*.py`, `src/backend/aggregate_by_region.py`).
 - **PySpark** : lecture/typage/agrégation départementale du CSV DVF
   (`src/backend/spark_dvf_analysis.py`).
-- **SQLite** : stockage portable des transactions, indicateurs, agrégats et
-  tables temps réel (`data/homepedia.db`, `src/realtime_price/sqlite_store.py`).
+- **SQLite** : `homepedia.db` sert l'analytique ; `realtime_price.db` isole les
+  tables du worker périodique (`src/realtime_price/sqlite_store.py`).
 - **SQLAlchemy** : définition/chargement de tables SQL et introspection ERD
   (`src/backend/load_to_sqlite.py`, `src/backend/load_to_db.py`,
   `scripts/generate_erd.py`).
@@ -208,7 +207,8 @@ Preuves : `src/`, `infra/docker-compose.yml`, `tests/test_ingestion.py`,
 - **Parquet/PyArrow** : fichiers analytiques compacts pour les indicateurs.
 - **TinyDB, TextBlob, WordCloud** : démonstration NoSQL/NLP annexe sur des avis.
 - **Requests, BeautifulSoup** : scraping HTTP/HTML.
-- **Docker Compose** : services app, worker, MongoDB, Metabase et volumes.
+- **Docker Compose** : app, worker, MongoDB, Metabase, master Spark, deux workers
+  et job `spark-submit` optionnel.
 - **Black, Ruff, mypy, detect-secrets, pytest** : hygiène de code et tests.
 
 Preuves : `requirements.txt`, `Dockerfile`, `infra/docker-compose.yml`,
@@ -219,9 +219,9 @@ Preuves : `requirements.txt`, `Dockerfile`, `infra/docker-compose.yml`,
 1. **SQLite pour la portabilité locale.** Cohérent avec un projet scolaire et une
    démonstration sans serveur SQL, mais limité pour les écritures concurrentes et
    le scale-out (`README.md`, `infra/docker-compose.yml`).
-2. **Pré-agréger avec Spark.** Réduit le travail interactif de l'UI, mais le job
-   courant n'exploite pas un cluster et rapatrie la petite sortie dans pandas
-   (`src/backend/spark_dvf_analysis.py`).
+2. **Pré-agréger avec Spark.** Réduit le travail interactif de l'UI. Le job
+   exploite un cluster standalone Docker de deux workers et ne rapatrie dans
+   pandas que la petite sortie agrégée (`src/backend/spark_dvf_analysis.py`).
 3. **Parquet pour les indicateurs.** Bon format colonne pour lecture analytique,
    compression et typage ; ici les fichiers sont petits, donc le gain est surtout
    pédagogique (`scripts/csv_to_parquet.py`, `src/app/streamlit_app.py`).
@@ -232,12 +232,12 @@ Preuves : `requirements.txt`, `Dockerfile`, `infra/docker-compose.yml`,
 5. **Historique seulement sur changement.** Réduit le volume et rend les
    changements significatifs ; les runs séparés conservent la preuve de collecte
    (`src/realtime_price/sqlite_store.py`).
-6. **Idempotence partielle.** Les upserts et index uniques protègent Mongo, tandis
-   que plusieurs pipelines batch utilisent `append` et peuvent dupliquer les
-   transactions (`src/realtime_price/mongo_store.py`,
-   `src/backend/load_to_sqlite.py`, `src/backend/load_to_db.py`).
+6. **Idempotence renforcée.** Les upserts et index uniques protègent Mongo ; le
+   chargement DVF nettoie, dédoublonne puis remplace la table pour rendre le rejeu
+   du même batch idempotent (`src/realtime_price/mongo_store.py`,
+   `src/backend/load_to_sqlite.py`).
 7. **Cache et limites côté UI.** Les requêtes sont filtrées et plafonnées pour
-   éviter de charger 5,8 millions de lignes dans Streamlit
+   éviter de charger 1 884 593 lignes dans Streamlit
    (`src/app/streamlit_app.py`).
 
 ## 9. Forces
@@ -283,19 +283,16 @@ Preuves : `src/realtime_price/worker.py`, `src/realtime_price/sqlite_store.py`,
 ### Importantes
 
 5. `run_streamlit.ps1` contient un chemin utilisateur absolu obsolète.
-6. Le job Spark dérive le département sur deux caractères : Corse et outre-mer
-   peuvent être mal traités.
-7. La pauvreté dérive aussi le département par `str[:2]`, donc la Corse/DOM sont
-   fragiles.
-8. `aggregate_by_region.py` attend `revenus.income_median`,
-   `chomage` et `pauvrete.poverty_rate`, alors que les producteurs courants
-   écrivent `income.revenu_median`, `unemployment` et
-   `poverty.taux_pauvrete`.
-   La vue Parquet attend aussi `income_median` et `poverty_rate`, alors que les
-   producteurs courants génèrent `revenu_median` et `taux_pauvrete`
-   (`src/app/streamlit_app.py`, `src/backend/ingest_insee_income.py`,
-   `src/backend/ingest_insee_poverty.py`).
-9. Les chargeurs `append` ne sont pas idempotents et peuvent dupliquer les faits.
+6. Le cluster Spark reste mono-machine et lit un CSV local non partitionné : il
+   démontre la distribution des calculs sans fournir la résilience d'un cluster
+   de production.
+7. Les agrégats régionaux de revenu, chômage et pauvreté utilisent encore des
+   résumés de résumés ; leur pondération et leur interprétation doivent être
+   expliquées avec prudence.
+8. Le contrat commun réduit les divergences de noms, mais toute évolution doit
+   rester accompagnée de tests de contrat et d'une migration explicite.
+9. Le batch DVF est idempotent pour le rejeu du même jeu, mais le remplacement
+   complet doit être sécurisé contre une interruption pendant l'écriture.
 10. L'export global SQLite→Mongo supprime les collections avant réinsertion ; une
     panne intermédiaire laisse un miroir partiel.
 11. SQLite et Mongo sont écrits séquentiellement par le worker : si SQLite réussit
@@ -358,9 +355,10 @@ Preuves : fichiers cités ci-dessus, plus `src/realtime_price/config.py`,
 - La base locale provient de l'ancien PC portable. Le commit ou pipeline exact
   qui l'a produite reste inconnu ; cela explique plausiblement son décalage avec
   le code actuel, sans démontrer quelle branche l'a générée.
-- Pourquoi contient-elle 5,8 M de lignes alors que le README annonce environ
-  2 M : plusieurs années, doublons d'`append`, ou source différente ?
-- Quel est le schéma canonique attendu, français ou anglais ?
+- La réduction de plus de 3,9 M de lignes doit être présentée comme une correction
+  de qualité mesurée, conduisant à 1 884 593 transactions uniques.
+- Le schéma canonique est documenté dans `docs/DATA_CONTRACT.md` et emploie les
+  noms français partagés par les quatre consommateurs.
 - **Confirmé dans le périmètre de soutenance** : MongoDB, Metabase, PostgreSQL,
   SeLoger et l'analyse d'avis. Leur présence dans le discours ne doit toutefois
   pas être confondue avec une intégration complète dans la branche courante.
@@ -379,7 +377,7 @@ Preuves : fichiers cités ci-dessus, plus `src/realtime_price/config.py`,
 | Fichier | Pourquoi il est central |
 |---|---|
 | `README.md` | intention et procédure historique |
-| `infra/docker-compose.yml` | topologie des quatre services |
+| `infra/docker-compose.yml` | topologie de l'application, du temps réel, des stockages, de Metabase et de Spark |
 | `infra/Makefile` / `infra/make.ps1` | orchestration manuelle batch et temps réel |
 | `src/backend/ingest_valeursfoncieres.py` | entrée du pipeline DVF |
 | `src/backend/ingest_insee_*.py` | transformations des indicateurs |
@@ -399,8 +397,32 @@ Preuves : fichiers cités ci-dessus, plus `src/realtime_price/config.py`,
 
 Présenter Homepedia comme un **prototype analytique Big Data local et
 reproductible**, pas comme une plateforme distribuée de production. La valeur
-technique est la chaîne complète, le traitement d'un volume DVF significatif, la
-pré-agrégation Spark, la visualisation géospatiale et l'extension de collecte
-périodique avec DQ/idempotence. Reconnaître franchement les dérives de schéma,
-l'idempotence incomplète et les limites de SQLite démontre plus de maîtrise que de
+technique est la chaîne complète, le nettoyage de 1 884 593 transactions DVF
+uniques, la pré-agrégation sur un cluster Spark Docker, la visualisation
+géospatiale cohérente et l'extension de collecte périodique avec DQ/idempotence.
+Reconnaître les limites mono-machine du cluster, la cohérence éventuelle de la
+double écriture et les limites de SQLite démontre plus de maîtrise que de
 survendre la solution.
+
+## 15. Consolidation fonctionnelle du 22 août 2026
+
+- **Qualité DVF** : plus de 3,9 M de lignes dupliquées ou aberrantes supprimées ;
+  mutations symboliques à 1 € exclues ; codes postaux et prix au m² recalculés ;
+  chargement idempotent.
+- **Agrégations** : 94 départements et 13 régions, Corse incluse ; agrégation
+  régionale construite depuis la pré-agrégation départementale pour éviter de
+  rescanner les faits.
+- **Contrat** : noms canoniques français partagés par SQLite, MongoDB, Streamlit,
+  Metabase et les tests.
+- **Interface** : filtres Standard cohérents sur KPI, tables, exports, cartes et
+  graphiques ; cas sans données gérés ; requêtes SQL filtrées et échantillons pour
+  limiter la mémoire.
+- **Socio-économie** : chômage et population régionale appliqués au même ensemble
+  de départements dans chaque visualisation ; matrice régionale à cinq variables.
+- **Corrélations** : chaque coefficient décrit une relation indépendante ; ils
+  n'ont aucune raison de totaliser 1 et ne prouvent pas une causalité.
+- **Temps réel** : dates en heure de Paris, suivi renforcé des runs, erreurs et
+  changements ; simulation de 30 à 180 points, explicitement non persistée.
+- **Fiabilité SQLite** : bases analytique et temps réel séparées, lecture seule
+  côté Streamlit, six tentatives, `busy_timeout`, WAL pour le worker et message
+  utilisateur sans traceback.

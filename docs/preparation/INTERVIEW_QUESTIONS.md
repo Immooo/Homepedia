@@ -43,18 +43,19 @@ après la tentative.
   temps réel, export CSV.
 - **Q05** : ETL batch, Spark, SQLite, worker polling, MongoDB, Streamlit,
   Metabase/Docker Compose.
-- **Q06** : stockage local portable de faits, indicateurs, agrégats et temps réel.
+- **Q06** : stockage local portable ; `homepedia.db` pour l'analytique et
+  `realtime_price.db` pour isoler les écritures périodiques.
 - **Q07** : brut/observations/latest et miroir ; la page temps réel lit SQLite,
   le dashboard ne consulte Mongo que pour un test explicite.
-- **Q08** : pré-agrégation départementale du DVF ; ne pas prétendre à un cluster
-  de production.
+- **Q08** : pré-agrégation départementale du DVF sur un cluster Spark standalone
+  Docker de 1 master et 2 workers ; cluster réel mais mono-machine, pas production.
 - **Q09** : Standard, Spark, Text Analysis, socio-éco, région, méthodologie, plus
   page temps réel.
 - **Q10** : batch + polling micro-batch ; aucun vrai bus de streaming.
 - **Q11** : transaction/commune/code postal, département, région, France/IDF/
   province pour le temps réel.
-- **Q12** : base locale 1,6 Go, 5 814 960 transactions, CSV traité 127 Mo, résultats
-  agrégés et 5 113 runs.
+- **Q12** : 1 884 593 transactions uniques, 94 départements, 13 régions,
+  cluster 1 master + 2 workers et runs tracés.
 
 </details>
 
@@ -82,6 +83,12 @@ après la tentative.
 13. **L2-Q13** Quels formats de fichiers sont utilisés et pour quels usages ?
 14. **L2-Q14** Quels index SQLite sont importants pour le projet ?
 15. **L2-Q15** Comment le miroir complet SQLite vers Mongo fonctionne-t-il ?
+16. **L2-Q16 ★** Comment le cluster Spark Docker est-il composé et comment le job
+    lui est-il soumis ?
+17. **L2-Q17** Comment les filtres Streamlit restent-ils cohérents entre KPI,
+    tableaux, exports, cartes et graphiques ?
+18. **L2-Q18** Comment fonctionne la simulation temps réel et quelles données
+    sont volontairement absentes de la base ?
 
 <details>
 <summary>Grille examinateur — niveau 2</summary>
@@ -106,13 +113,20 @@ après la tentative.
   puis upserts.
 - **Q11** : déduplication si période et valeur inchangées ; les runs gardent la
   preuve de collecte.
-- **Q12** : SQL paramétré, filtres, `LIMIT` 40k/120k, cache Streamlit.
+- **Q12** : SQL paramétré, filtres appliqués en amont, échantillons/LIMIT et cache
+  Streamlit ; message propre si aucun résultat.
 - **Q13** : CSV brut/interchange, Parquet analytique colonne, GeoJSON carte,
   SQLite service, JSON TinyDB, HTML/PNG sorties.
 - **Q14** : dates/code postal/commune/composite transaction ; métrique + timestamp
   et timestamps des runs.
 - **Q15** : découvre tables, supprime orphelines, `drop()` chaque collection,
   insère par lots de 5 000.
+- **Q16** : `spark-master`, deux workers d'un cœur/1 Gio, puis `spark-submit` via
+  le profil tools et `spark://spark-master:7077`.
+- **Q17** : un même masque ou ensemble de départements filtrés alimente toutes les
+  vues ; éviter de recalculer chaque graphique sur un périmètre différent.
+- **Q18** : 30 à 180 points, scénarios volatil/stable/hausse/baisse, tendance,
+  oscillation et bruit ; comparaison brut/simulé ; aucune donnée fictive persistée.
 
 </details>
 
@@ -139,6 +153,9 @@ après la tentative.
 13. **L3-Q13** Pourquoi monter `data/` en volume Docker ?
 14. **L3-Q14** Quelles alternatives proposerais-tu à Streamlit ?
 15. **L3-Q15** Quels choix réduisent le coût d'une démonstration ?
+16. **L3-Q16 ★** Pourquoi séparer la base analytique de la base temps réel ?
+17. **L3-Q17** Pourquoi les coefficients d'une matrice de corrélation ne doivent-ils
+    pas totaliser 1 ?
 
 <details>
 <summary>Grille examinateur — niveau 3</summary>
@@ -173,6 +190,10 @@ après la tentative.
   vitesse de prototypage vs contrôle/performance.
 - **Q15** : SQLite, Docker Compose, cache/LIMIT, agrégats, données déjà calculées,
   polling simple.
+- **Q16** : éviter que les écritures périodiques et verrous du worker perturbent
+  les lectures analytiques DVF ; lecture seule UI, WAL et busy timeout.
+- **Q17** : chaque coefficient mesure indépendamment la relation entre deux
+  variables ; ce ne sont ni des parts d'un total ni des probabilités.
 
 </details>
 
@@ -180,7 +201,8 @@ après la tentative.
 
 ### Questions
 
-1. **L4-Q01 ★** Le job batch est-il idempotent ? Donne les contre-exemples précis.
+1. **L4-Q01 ★** Comment le chargement DVF est-il devenu idempotent, et quelle
+   limite conserve un remplacement complet ?
 2. **L4-Q02 ★** Que se passe-t-il si SQLite réussit puis MongoDB échoue dans un
    run temps réel ?
 3. **L4-Q03** Comment garantirais-tu la cohérence entre SQLite et MongoDB ?
@@ -189,9 +211,10 @@ après la tentative.
    collections ?
 6. **L4-Q06 ★** Quels problèmes vois-tu dans la normalisation des codes
    géographiques ?
-7. **L4-Q07 ★** Pourquoi la base contient-elle 5,8 M de transactions alors que le
-   README parle d'environ 2 M ? Comment enquêter sans supposer ?
-8. **L4-Q08 ★** Explique la divergence des noms de tables et son impact.
+7. **L4-Q07** Comment prouves-tu que les 1 884 593 transactions finales sont
+   nettoyées et que le chargement est rejouable ?
+8. **L4-Q08 ★** Comment le contrat de données commun empêche-t-il les divergences
+   SQLite/MongoDB/Streamlit/Metabase ?
 9. **L4-Q09** Comment versionnerais-tu le schéma et les contrats de données ?
 10. **L4-Q10** Comment partitionnerais-tu les transactions en data lake ?
 11. **L4-Q11** Comment éviter un scan ou un chargement mémoire complet du DVF ?
@@ -211,8 +234,9 @@ après la tentative.
 <details>
 <summary>Grille examinateur — niveau 4</summary>
 
-- **Q01** : non globalement ; `append` transactions/pauvreté peut dupliquer ;
-  `replace` est rejouable mais non atomique ; temps réel plus idempotent.
+- **Q01** : nettoyage/dédoublonnage puis `replace` contrôlé ; le rejeu du même
+  fichier conserve 1 884 593 faits, mais une interruption pendant le remplacement
+  demande staging/transaction/swap pour une garantie plus forte.
 - **Q02** : SQLite est à jour, Mongo en retard, run journalisé `error` ; prochain
   run peut corriger latest mais pas forcément le brut manquant avec le même run.
 - **Q03** : store canonique + outbox, CDC, file de messages, saga/retry ou job de
@@ -221,12 +245,13 @@ après la tentative.
   HTTP/status, snapshot HTML ; vérifier période/structure/seuils et tests fixtures.
 - **Q05** : relance complète possible mais fenêtre vide/partielle ; mieux écrire
   dans collections temporaires versionnées puis swap/alias.
-- **Q06** : Spark et pauvreté tronquent sur deux caractères ; Corse/DOM ; types
-  Excel `01` ; référentiels et dates géographiques ; normalisation centralisée.
-- **Q07** : vérifier provenance/branche, `MAX(id)`, clés naturelles, doublons,
-  dates/natures, journaux ; `append` répété est une hypothèse seulement.
-- **Q08** : branche courante anglaise vs base française ; UI/tests/agrégats
-  cassés, ERD obsolète, contrats implicites.
+- **Q06** : Corse `2A/2B`, DOM à trois chiffres, zéros initiaux, types Excel ;
+  référentiel et normalisation centralisée.
+- **Q07** : règles explicites, doublons exacts ou clé métier, mutations
+  symboliques, plages de prix, tests de contrat et second lancement donnant le
+  même nombre de lignes.
+- **Q08** : dictionnaire canonique français, clés et mesures documentées, tests de
+  contrat, migrations versionnées et miroir qui préserve les mêmes noms/champs.
 - **Q09** : migrations Alembic ou SQL versionnées, version de dataset, schéma
   canonique, tests de contrat, data dictionary, compatibilité ascendante.
 - **Q10** : année/mois ou département selon requêtes, éviter petites partitions,
@@ -266,17 +291,21 @@ après la tentative.
 5. « Quelle garantie exactly-once offres-tu ? »
 6. « Ton prix moyen au m² est-il robuste aux valeurs aberrantes ? »
 7. « Une corrélation revenu-prix prouve-t-elle un effet causal ? »
-8. « Pourquoi n'as-tu que 89 départements dans l'agrégat Spark ? »
-9. « Pourquoi seulement 12 régions dans l'agrégat local ? »
+8. « Ton cluster Spark possède-t-il réellement trois machines physiques ? »
+9. « Pourquoi obtiens-tu 94 départements et 13 régions, pas 101 et 18 ? »
 10. « Un `LIMIT` sans `ORDER BY` produit-il un échantillon représentatif ? »
+11. « Pourquoi les corrélations de la matrice ne totalisent-elles pas 1 ? »
+12. « Les points simulés de la démo polluent-ils l'historique réel ? »
 
 <details>
 <summary>Réflexes attendus</summary>
 
-Ne pas inventer. Répondre respectivement : session locale, aucun Kafka, fréquence
+Ne pas inventer. Répondre respectivement : 1 master + 2 workers conteneurisés sur
+une seule machine physique, aucun Kafka, fréquence
 de collecte ≠ fréquence de publication, rôle dépendant du flux, idempotence
 partielle et non exactly-once, moyenne sensible aux extrêmes, non-causalité,
-investigation nécessaire sur exclusions/codes, couverture géographique à
-vérifier, et `LIMIT` non ordonné non représentatif.
+cluster Docker mono-machine, couverture liée aux données valides et au périmètre
+métropolitain/Corse, `LIMIT` non ordonné non représentatif, coefficients
+indépendants et simulation jamais persistée.
 
 </details>

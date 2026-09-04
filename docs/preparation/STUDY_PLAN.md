@@ -212,24 +212,26 @@ Une « nouvelle notion » n'est ajoutée qu'après le rappel des anciennes. Les 
 - **Durée** : 55 min
 - **Objectifs** : expliquer l'usage réel de Spark et les formats.
 - **Notions révisées** : flux DVF et agrégations.
-- **Nouvelles notions** : transformations/actions Spark, `groupBy`, driver,
-  `toPandas`, CSV versus Parquet, partitionnement.
+- **Nouvelles notions** : transformations/actions Spark, `groupBy`, master,
+  workers, `spark-submit`, driver, `toPandas`, CSV versus Parquet, partitionnement.
 - **Questions** : 10 à 12.
 - **Exercice oral** : répondre à « Pourquoi Spark ? » en 90 secondes, avec une
   limite et une alternative.
-- **Résultat attendu** : ne jamais prétendre qu'un cluster est configuré ; savoir
-  quand `toPandas()` est sûr.
+- **Résultat attendu** : décrire exactement le cluster Docker (1 master,
+  2 workers) sans le confondre avec trois machines physiques ; savoir quand
+  `toPandas()` est sûr et citer les sorties 94 départements/13 régions.
 
 ## Jour 9 — Stockage, orchestration et déploiement
 
 - **Durée** : 60 min
 - **Objectifs** : relier SQLite, Mongo, volumes et services Docker.
 - **Notions révisées** : Spark/formats et idempotence.
-- **Nouvelles notions** : index, concurrence SQLite, collections Mongo, miroir,
-  Dockerfile multi-stage, Compose, healthcheck, orchestration Make.
+- **Nouvelles notions** : séparation `homepedia.db`/`realtime_price.db`, lecture
+  seule Streamlit, WAL, `busy_timeout`, retries, collections Mongo, miroir,
+  services Spark, Dockerfile multi-stage, Compose, healthcheck et Make.
 - **Questions** : 12 à 14.
-- **Exercice oral** : expliquer le démarrage théorique des quatre services et le
-  chemin des données montées.
+- **Exercice oral** : expliquer le démarrage de l'application, du worker, de
+  MongoDB, Metabase et du cluster Spark, ainsi que le chemin des volumes montés.
 - **Résultat attendu** : décrire l'environnement sans confondre orchestration
   Docker et orchestration de données.
 
@@ -274,11 +276,13 @@ Une « nouvelle notion » n'est ajoutée qu'après le rappel des anciennes. Les 
 - **Durée** : 60 min
 - **Objectifs** : maîtriser le worker de bout en bout.
 - **Notions révisées** : double écriture et DQ.
-- **Nouvelles notions** : polling, fréquence de publication, latest/history/runs,
-  upsert, clés uniques, exactly-once versus idempotence.
+- **Nouvelles notions** : polling, heure de Paris, fréquence de publication,
+  latest/history/runs, upsert, clés uniques, exactly-once versus idempotence,
+  simulation de 30 à 180 points et séparation stricte réel/simulé.
 - **Questions** : 12 à 14.
-- **Exercice oral** : expliquer pourquoi Kafka n'est pas utilisé, puis dire quand
-  il le deviendrait.
+- **Exercice oral** : expliquer pourquoi Kafka n'est pas utilisé, puis présenter
+  la simulation sans la faire passer pour une donnée persistée ou publiée par
+  l'INSEE.
 - **Résultat attendu** : employer précisément « micro-batch périodique » et
   décrire les garanties réelles.
 
@@ -321,8 +325,9 @@ Une « nouvelle notion » n'est ajoutée qu'après le rappel des anciennes. Les 
 - **Durée** : 55 min
 - **Objectifs** : construire des contrôles et alertes utiles.
 - **Notions révisées** : DQ du worker et géographie.
-- **Nouvelles notions** : tests de contrat, fraîcheur, complétude, unicité,
-  distribution, métriques/alertes, lineage.
+- **Nouvelles notions** : contrat commun, cohérence des filtres entre vues,
+  résultat vide, fraîcheur, complétude, unicité, distribution,
+  métriques/alertes et lineage.
 - **Questions** : 10 à 12.
 - **Exercice oral** : concevoir un tableau de bord d'exploitation avec cinq
   métriques et deux alertes.

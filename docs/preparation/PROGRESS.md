@@ -21,22 +21,22 @@
 | Problème métier et pitch | Critique | 3 | 21/08/2026 | 2 | 2 | 25/08/2026 | Chaîne complète et Spark cités ; rendre le pitch plus concis et distinguer les sources INSEE fichiers du scraping temps réel |
 | Sources DVF et INSEE | Critique | 4 | 21/08/2026 | 2 | 2 | 28/08/2026 | Distingue correctement les fichiers socio-économiques INSEE des indices de prix collectés périodiquement sur la page HTML |
 | Entrées, sorties et utilisateurs | Haute | 4 | 21/08/2026 | 5 | 1 | 28/08/2026 | Explique le diagnostic, la correction et la vérification anti-régression du rôle de mainteneur |
-| Architecture globale | Critique | 3 | 21/08/2026 | 3 | 1 | 25/08/2026 | Chaîne globale et Spark correctement replacés ; préciser MongoDB comme complément du temps réel et SQLite comme lecture principale de Streamlit |
+| Architecture globale | Critique | 3 | 21/08/2026 | 3 | 1 | 25/08/2026 | Réapprendre l'état consolidé : cluster Spark, contrat commun et deux bases SQLite |
 | Parcours d'une transaction DVF | Critique | 4 | 21/08/2026 | 2 | 1 | 28/08/2026 | Distingue donnée brute et traitée ; consolider les niveaux CSV détaillé, table SQLite et agrégat Spark |
-| Parcours d'un indicateur INSEE | Haute | 3 | 14/08/2026 | 1 | 0 | 18/08/2026 | Parcours général correct ; retenir FILOSOFI, code commune→département et Parquet |
+| Parcours d'un indicateur INSEE | Haute | 3 | 21/08/2026 | 2 | 1 | 25/08/2026 | Parcours fichiers→pandas→codes→SQLite compris après confusion initiale avec le worker |
 | Parcours d'un indice temps réel | Critique | 3 | 20/08/2026 | 1 | 1 | 24/08/2026 | Parcours complet globalement correct : page INSEE → polling/scraper → DQ → SQLite/MongoDB → Streamlit ; dire « périodique », pas « ponctuel » |
 | Fichiers et composants centraux | Haute | 3 | 20/08/2026 | 1 | 6 | 24/08/2026 | `worker.py` correctement placé sur le temps réel ; priorité actuelle : maîtriser les rôles avant les noms de fichiers |
-| État local et preuves chiffrées | Haute | 2 | 21/08/2026 | 3 | 2 | 23/08/2026 | Identifie `history` comme preuve mais oublie le chiffre ; retenir 16 765 changements ou 5 113 runs |
+| État local et preuves chiffrées | Haute | 2 | 21/08/2026 | 3 | 2 | 23/08/2026 | Preuves prioritaires : 1 884 593 transactions uniques, 94 départements, 13 régions, 1 master + 2 workers |
 | Divergence de schéma/branches | Critique | 4 | 21/08/2026 | 5 | 3 | 28/08/2026 | Propose correctement un nommage canonique ; ajouter migrations versionnées et tests de contrat pour l'imposer |
-| Ingestion et nettoyage DVF | Critique | 2 | 21/08/2026 | 4 | 1 | 23/08/2026 | Distinguer la normalisation des en-têtes de colonnes des contrôles de qualité et du dédoublonnage ; relier les doublons au biais sur nombre de ventes et prix moyen |
-| Idempotence des batchs | Critique | 4 | 21/08/2026 | 1 | 0 | 28/08/2026 | Comprend qu'un second `append` peut dupliquer les faits et fausser les agrégats |
-| Ingestion des indicateurs INSEE | Haute | 0 | Jamais | 0 | 0 | J7 | Non évalué |
-| Codes géographiques Corse/DOM | Haute | 0 | Jamais | 0 | 0 | J7 | Plusieurs implémentations incohérentes |
+| Ingestion et nettoyage DVF | Critique | 3 | 21/08/2026 | 12 | 4 | 25/08/2026 | Nettoyage, contrôles, dédoublonnage et prix/m² compris ; revoir parsing date et contrôles finaux |
+| Idempotence des batchs | Critique | 4 | 21/08/2026 | 4 | 0 | 28/08/2026 | Définition et risque `append` maîtrisés ; nouveau chargement DVF `replace` contrôlé |
+| Ingestion des indicateurs INSEE | Haute | 3 | 21/08/2026 | 2 | 1 | 25/08/2026 | Chaîne batch comprise ; ne pas la confondre avec le scraping périodique |
+| Codes géographiques Corse/DOM | Haute | 4 | 21/08/2026 | 3 | 0 | 28/08/2026 | Sait justifier chaînes, `2A`/`2B`, DOM à trois chiffres et zéros initiaux |
 | Agrégations et biais statistiques | Haute | 3 | 21/08/2026 | 4 | 0 | 25/08/2026 | Comprend l'agrégat comme résumé rapide ; dire groupBy département et préciser les mesures calculées plutôt que « données similaires » |
-| Jointures et clés géographiques | Haute | 2 | 14/08/2026 | 0 | 1 | 16/08/2026 | Idée générale correcte ; jointure sur code, pas simplement sur fichiers |
-| Usage réel de Spark | Critique | 4 | 20/08/2026 | 1 | 1 | 27/08/2026 | Spark correctement associé à la pré-agrégation des transactions DVF ; revoir ensuite session locale et absence de cluster démontré |
-| `toPandas()` et frontière driver | Haute | 0 | Jamais | 0 | 0 | J8 | Non évalué |
-| CSV, Parquet et partitionnement | Haute | 0 | Jamais | 0 | 0 | J8 | Non évalué |
+| Jointures et clés géographiques | Haute | 2 | 21/08/2026 | 2 | 2 | 23/08/2026 | Jointure sur code normalisé comprise ; revoir le comptage des lignes non appariées |
+| Usage réel de Spark | Critique | 4 | 22/08/2026 | 5 | 1 | 29/08/2026 | Explique le cluster Docker 1 master + 2 workers, la pré-agrégation et la limite mono-machine |
+| `toPandas()` et frontière driver | Haute | 4 | 22/08/2026 | 1 | 0 | 29/08/2026 | Comprend que seule la sortie agrégée (~94 lignes) revient au driver |
+| CSV, Parquet et partitionnement | Haute | 3 | 22/08/2026 | 1 | 1 | 26/08/2026 | Retenir colonnaire/typé/compressé et lecture sélective ; ne pas réduire Parquet au découpage |
 | SQLite : rôle, index, limites | Critique | 3 | 21/08/2026 | 3 | 0 | 25/08/2026 | Connaît la limite de concurrence ; expliquer les verrous d'écriture et l'absence de scale-out pour un passage à l'échelle |
 | MongoDB : collections et index | Haute | 4 | 20/08/2026 | 2 | 2 | 27/08/2026 | Distingue MongoDB de SQLite : Streamlit lit principalement SQLite ; MongoDB complète le temps réel |
 | Docker Compose et déploiement | Haute | 3 | 14/08/2026 | 1 | 0 | 18/08/2026 | Comprend conteneurs isolés et services |
@@ -56,6 +56,9 @@
 | Observabilité et alertes | Haute | 2 | 21/08/2026 | 0 | 1 | 23/08/2026 | Sait chercher une trace dans MongoDB ; retenir aussi `realtime_price_runs` dans SQLite comme preuve directe, et l'absence d'alertes externes |
 | Sécurité et secrets | Haute | 0 | Jamais | 0 | 0 | J18 | Mongo exposé sans auth Compose |
 | Corrélation versus causalité | Haute | 0 | Jamais | 0 | 0 | J18 | Non évalué |
+| Cohérence des filtres UI | Haute | 0 | Jamais | 0 | 0 | J10 | Même périmètre filtré pour KPI, tables, exports, cartes et graphiques |
+| Simulation temps réel non persistée | Haute | 0 | Jamais | 0 | 0 | J13 | 30–180 points ; scénarios et bruit ; aucune donnée fictive en base |
+| Séparation des bases SQLite | Critique | 0 | Jamais | 0 | 0 | J9 | Analytique et temps réel isolés ; RO UI, retries, WAL et busy_timeout |
 | Limites et améliorations | Critique | 0 | Jamais | 0 | 0 | J18 | Non évalué |
 | Démonstration et plan B | Critique | 0 | Jamais | 0 | 0 | J19 | Non évalué |
 | Présentation complète | Critique | 0 | Jamais | 0 | 0 | J10 | Premier essai à J10 |
@@ -79,9 +82,9 @@
 
 | Indicateur | Valeur initiale |
 |---|---:|
-| Séances terminées | 5 / 21 |
-| Questions évaluées | 101 |
+| Séances terminées | 8 / 21 |
+| Questions évaluées | 133 |
 | Moyenne des notes | 7,6 / 10 |
 | Notions critiques ≥ 4/5 | 8 |
 | Présentations complètes réalisées | 0 |
-| Dernière séance | J5 — 21/08/2026 |
+| Dernière séance | J8 — 22/08/2026 |

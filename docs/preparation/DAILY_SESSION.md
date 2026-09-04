@@ -9,12 +9,12 @@
 | Champ | Valeur |
 |---|---|
 | Programme | En cours |
-| Prochaine séance | Jour 6 — Ingestion DVF et qualité batch |
-| Commande | `Commence le jour 6` |
-| Dernière séance | J5 — 21/08/2026 |
+| Prochaine séance | Jour 9 — Stockage, orchestration et déploiement |
+| Commande | `Commence le jour 9` |
+| Dernière séance | J8 — 22/08/2026 |
 | Calendrier | Réorganisé du 20/08/2026 au 03/09/2026 : 2 h lun.–mer., doubles blocs jeu.–ven. |
 | Jours tampon | Samedi léger facultatif ; dimanche libre ; 04/09 en filet de sécurité |
-| Point prioritaire | Consolider SQLite/MongoDB, les fichiers temps réel et la divergence de schéma avant d'ajouter du contenu |
+| Point prioritaire | Retenir l'état du 22/08 : cluster Spark réel, 1 884 593 transactions uniques, 94 départements, 13 régions, filtres cohérents et bases SQLite séparées |
 
 ## Format d'une entrée
 
@@ -57,6 +57,106 @@ Deux ou trois phrases maximum.
 ```
 
 ## Historique
+
+## Séance J8 — 2026-08-22
+
+- Durée : début à 19 h 13 ; bloc court d'environ 25 minutes
+- Questions posées : 6 évaluées
+- Note moyenne : 8,3/10
+- Exercice oral : expliquer Spark, le cluster Docker, `toPandas()` et Parquet
+- Résultat : cluster et frontière driver compris ; Parquet et rôle exact de `spark-submit` à consolider
+
+### Résumé très court
+
+Tu sais maintenant expliquer pourquoi Spark pré-agrège le volume DVF et pourquoi
+la sortie réduite peut être rapatriée dans pandas. Tu as aussi retenu que le
+cluster contient un master et deux workers, mais reste limité par une seule
+machine physique.
+
+### Notions maîtrisées
+
+- master coordinateur, workers exécuteurs et `spark-submit` soumissionnaire ;
+- conversions, filtres, prix au m², codes postaux et agrégation Spark ;
+- `toPandas()` sûr sur environ 94 lignes agrégées ;
+- limite mono-machine du cluster Docker.
+
+### Notions fragiles
+
+- Parquet est colonnaire, typé et compressé ; il ne signifie pas forcément
+  « plusieurs petits fichiers » ;
+- `spark-submit` soumet un job, il n'envoie pas directement les données finales.
+
+### Objectifs de la séance suivante
+
+- expliquer `homepedia.db` et `realtime_price.db` ;
+- relier lecture seule, retries, `busy_timeout` et WAL ;
+- décrire les services Docker, MongoDB, Metabase et Spark.
+
+## Séance J7 — 2026-08-21
+
+- Durée : début à 16 h 34 ; environ 35 minutes actives avant fatigue
+- Questions posées : 12 évaluées, dont deux rappels bonus
+- Note moyenne : environ 7,7/10
+- Exercice oral : agrégation et jointures INSEE par département/région
+- Résultat : codes Corse/DOM, pondération et taux compris ; contrôle des lignes non jointes à réactiver
+
+### Résumé très court
+
+Tu distingues désormais codes géographiques, effectifs, taux, moyenne et médiane.
+Le parcours des fichiers INSEE reste parfois confondu avec le worker temps réel,
+et le diagnostic d'une jointure non appariée a provoqué une saturation en fin de bloc.
+
+### Notions maîtrisées
+
+- codes géographiques conservés comme chaînes, avec `2A`/`2B` et DOM ;
+- moyenne pondérée selon la population ;
+- différence entre effectif, taux, moyenne, médiane et somme ;
+- jointure sur code départemental normalisé.
+
+### Notions fragiles
+
+- distinguer immédiatement fichier INSEE batch et page HTML périodique ;
+- repérer les lignes non rattachées après une jointure gauche ;
+- expliquer pourquoi une médiane des médianes reste approximative.
+
+### Objectifs de la séance suivante
+
+- expliquer le cluster Spark réel : 1 master, 2 workers, une machine physique ;
+- maîtriser transformations/actions, `groupBy`, driver et `toPandas()` ;
+- comparer CSV et Parquet et citer 94 départements/13 régions.
+
+## Séance J6 — 2026-08-21
+
+- Durée : séance interactive non chronométrée
+- Questions posées : 14 évaluées
+- Note moyenne : environ 7,6/10
+- Exercice oral : chaîne DVF complète, qualité, dédoublonnage et idempotence
+- Résultat : principe d'idempotence acquis ; contrôles qualité et clé naturelle à consolider
+
+### Résumé très court
+
+Tu sais expliquer les risques des valeurs manquantes, invalides et dupliquées,
+ainsi que le problème posé par `append`. La chaîne DVF est comprise au niveau
+oral attendu, sans exiger une mémorisation ligne par ligne du code.
+
+### Notions maîtrisées
+
+- impact des doublons sur volumes et prix moyens ;
+- différence `append`/`replace` et définition de l'idempotence ;
+- intérêt d'une clé naturelle et risque de collision ;
+- surface strictement positive avant le calcul du prix au m².
+
+### Notions fragiles
+
+- parsing de date avec valeurs invalides converties en `NaT` ;
+- contrôles de structure après ingestion ;
+- distinction entre nettoyage, validation et contrôle final.
+
+### Objectifs de la séance suivante
+
+- parcours INSEE socio-économique ;
+- codes Corse/DOM et jointures géographiques ;
+- moyenne, médiane, somme et pondération.
 
 ## Séance J5 — 2026-08-21
 

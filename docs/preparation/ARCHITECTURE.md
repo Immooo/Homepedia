@@ -27,7 +27,7 @@
           |                  |                    |  | history     | | observations|
           v                  v                    |  | runs        | | latest      |
   +---------------+   +-------------------+       |  +------+------+ +------+------+
-  | Chargement SQL|   | Job PySpark local |       |         |               |
+  | Chargement SQL|   | Cluster Spark     |       |         |               |
   | transactions  |   | prix/m² par dept  |       |         |               |
   +-------+-------+   +---------+---------+       |         |               |
           |                     |                 |         |               |
@@ -37,7 +37,7 @@
              | SQLite            | ----------------------------------------+
              | homepedia.db      |      drop + insert par collection
              | faits/indicateurs |
-             | agrégats/realtime |
+             | faits/indicateurs |
              +---------+---------+
                        |
           SQL / pandas | + Parquet / GeoJSON / TinyDB
@@ -115,8 +115,8 @@ transactions_2024.csv
   -> vue Spark Streamlit
 ```
 
-Attention : le code écrit `spark_dept_analysis`, mais la base locale contient
-`analyse_departementale`.
+Le job écrit la table canonique `analyse_departementale`, conforme au contrat
+partagé par SQLite, MongoDB, Streamlit et Metabase.
 
 ### Flux B — INSEE socio-économique
 
@@ -175,7 +175,7 @@ Kafka, Hadoop HDFS, RPC, RabbitMQ, REST métier et gRPC ne sont pas utilisés.
 
 ### SQLite
 
-État constaté le 21/08/2026 :
+État constaté et consolidé les 21–22/08/2026 :
 
 | Table locale | Lignes | Rôle |
 |---|---:|---|
@@ -228,12 +228,11 @@ utilisé (`src/backend/ingest_valeursfoncieres.py`).
 
 ### Batch Spark
 
-L'agrégation `groupBy` est distribuable, mais :
-
-- la session n'est pas configurée pour un cluster ;
-- la source est un CSV local non partitionné ;
-- le département est dérivé sur deux caractères ;
-- la sortie est collectée avec `toPandas()`.
+L'agrégation `groupBy` s'exécute sur un cluster Spark standalone Docker composé
+d'un master et de deux workers. Le job normalise les codes postaux, traite la
+Corse en `2A`/`2B`, exclut les départements invalides ainsi que les prix au m²
+hors plage, puis produit 94 agrégats départementaux. La source reste un CSV
+local non partitionné et la sortie est collectée avec `toPandas()`.
 
 `toPandas()` est acceptable ici puisque la sortie attendue est d'environ cent
 lignes, mais ne le serait pas sur une sortie de grande cardinalité
@@ -268,6 +267,10 @@ app             image Homepedia, port 8501, data/src/outputs montés
 realtime-price  même image, commande worker, dépend de mongo
 mongo           mongo:7, volume local, port 27017 exposé
 metabase        metabase:latest, port 3000, data en lecture seule
+spark-master    coordinateur Spark standalone, ports 7077/8080
+spark-worker-1  exécuteur Spark, 1 cœur et 1 Gio
+spark-worker-2  exécuteur Spark, 1 cœur et 1 Gio
+spark-submit    job ponctuel via le profil tools
 ```
 
 Limites :
@@ -321,7 +324,7 @@ Preuves : `Dockerfile`, `infra/docker-compose.yml`.
 
 ### Goulots d'étranglement
 
-- SQLite à 1,6 Go et 5,8 M de transactions : bon en lecture locale, faible
+- SQLite avec 1 884 593 transactions uniques : bon en lecture locale, faible
   concurrence d'écriture et pas de scale-out ;
 - calcul `valeur_fonciere / surface` à la volée, sans colonne matérialisée ;
 - `date(date_mutation)` peut réduire l'utilisation d'un index ;
@@ -354,8 +357,8 @@ et économiquement cohérent.
 - **Mongo observations** : unicité `(metric_uid, scraped_at)`.
 - **Mongo latest** : unicité `metric_uid`.
 - **Runs** : UUID par tentative.
-- **Batch historique** : plusieurs chemins `append`, donc garantie d'idempotence
-  insuffisante.
+- **Batch DVF** : chargement `replace` contrôlé après nettoyage et dédoublonnage ;
+  une relance du même jeu ne recrée pas les doublons.
 - **Double stockage** : cohérence éventuelle, aucune transaction distribuée.
 
 ## 13. Explication orale en deux minutes
@@ -379,14 +382,14 @@ dernier état avec des index uniques pour l'idempotence.
 
 Streamlit constitue la couche de présentation. Il combine SQL, Parquet et
 GeoJSON pour afficher des filtres, cartes, distributions, corrélations et une
-page de suivi du worker. Docker Compose lance l'application, le worker, MongoDB
-et Metabase.
+page de suivi du worker. Docker Compose lance l'application, le worker, MongoDB,
+Metabase et le cluster Spark standalone composé d'un master et de deux workers.
 
 La solution est volontairement portable et adaptée à un prototype. Ses limites
-principales sont SQLite pour la concurrence, le polling qui n'est pas du vrai
-streaming, la double écriture non atomique et une dérive actuelle des noms de
-tables entre branches. En production, je versionnerais le schéma, rendrais les
-batchs idempotents, ajouterais orchestration et monitoring, et déplacerais les
+principales sont SQLite pour la montée en charge, le polling qui n'est pas du vrai
+streaming et la double écriture non atomique. Le contrat de données canonique
+réduit désormais les dérives de noms entre les composants. En production,
+j'ajouterais orchestration et monitoring, et déplacerais les
 faits vers un stockage plus scalable. »
 # Mise à jour technique du 21 août 2026
 
