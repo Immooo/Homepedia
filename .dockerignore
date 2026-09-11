@@ -1,0 +1,45 @@
+# --- Git ---
+.git/
+.gitignore
+.gitmodules
+
+# --- Environnements Python ---
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- IDE & outils de dev ---
+.idea/
+.vscode/
+
+# --- Secrets & variables d'environnement ---
+.env
+.env.*
+*.env
+.env.local
+kaggle.json
+proxies.txt
+*.pem
+*.key
+*.p12
+*.pfx
+
+# --- Données lourdes ou générées ---
+data/
+db/
+outputs/
+logs/
+tmp/
+notebooks/
+.notebooks/
+.ipynb_checkpoints/
+mongo_data/
+mongo_dump_homepedia/
+*.zip
+
+# --- Infra ---
+infra/
