@@ -155,4 +155,20 @@ Les fichiers de configuration locale, bases de données, archives de données et
 
 ## Licence
 
-Aucune licence n'est encore définie. Ajoutez une licence explicite avant d'autoriser la réutilisation du code par des tiers.
+Copyright © 2026 Adrien Troise. Tous droits réservés.
+
+Le code source, la documentation, les éléments graphiques et les autres contenus propres au projet **Homepedia** sont protégés par le droit d'auteur.
+
+Sauf autorisation écrite préalable de l'auteur, il est interdit de :
+
+- copier ou reproduire tout ou partie du projet ;
+- modifier ou créer une œuvre dérivée à partir du code ;
+- redistribuer, publier ou mettre à disposition le code source ;
+- utiliser tout ou partie du projet dans un autre projet public ou privé ;
+- utiliser le projet ou une partie de celui-ci à des fins commerciales.
+
+La consultation du dépôt et l'exécution du projet à des fins d'évaluation ou de démonstration sont autorisées.
+
+Les jeux de données provenant de **DVF**, de **l'INSEE** ou d'autres sources externes restent soumis à leurs propres licences et conditions d'utilisation.
+
+Pour toute demande de réutilisation, contactez l'auteur.
